@@ -1,8 +1,21 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'schedule_screen.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/theme/app_colors.dart';
+import 'package:schedule_app/theme/app_spacing.dart';
+import 'package:schedule_app/theme/app_typography.dart';
+import 'package:schedule_app/widgets/cards/app_card.dart';
+import 'package:schedule_app/widgets/cards/timeline_card.dart';
+import 'package:schedule_app/widgets/weather_widget.dart';
+
+import 'add_note_screen.dart';
 import 'login_screen.dart';
+import 'notes_screen.dart';
 import 'profile_screen.dart';
+import 'schedule_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,443 +25,628 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String selectedTab = "today"; // today | schedule
-  bool isLoggedIn = false; // trạng thái đăng nhập (giả lập)
+  bool _isLoggedIn = false;
+  bool _loading = true;
+  String _name = '';
+  String _avatar = '';
+  List _todaySchedules = [];
+  int _totalNotes = 0;
+  int _totalGroups = 0;
+  List _recentNotes = [];
 
-  // === Chuyển giữa 2 tab ===
-  void _onTabSelected(String tab, BuildContext context) {
-    setState(() => selectedTab = tab);
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
 
-    if (tab == "schedule") {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ScheduleScreen()),
-      ).then((_) {
-        // khi quay lại, đổi lại về "today"
-        setState(() => selectedTab = "today");
-      });
+  String? _getUserIdFromToken(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = parts[1];
+      final normalized = base64Url.normalize(payload);
+      final resp = utf8.decode(base64Url.decode(normalized));
+      final payloadMap = json.decode(resp);
+      return payloadMap['id'];
+    } catch (_) {
+      return null;
     }
   }
 
-  // === Khi ấn avatar ===
+  Future<void> _loadData({bool showLoader = true}) async {
+    if (!mounted) return;
+    if (showLoader) setState(() => _loading = true);
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    if (!mounted) return;
+    if (token == null) {
+      setState(() {
+        _isLoggedIn = false;
+        _name = '';
+        _avatar = '';
+        _todaySchedules = [];
+        _loading = false;
+      });
+      return;
+    }
+
+    final userId = _getUserIdFromToken(token);
+    if (userId == null) {
+      setState(() {
+        _isLoggedIn = false;
+        _loading = false;
+      });
+      return;
+    }
+
+    setState(() => _isLoggedIn = true);
+
+    try {
+      final userFuture = http.get(
+        Uri.parse('http://10.0.2.2:5000/api/users/$userId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      final scheduleFuture = http.get(
+        Uri.parse('http://10.0.2.2:5000/api/schedules/$userId/today'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      final notesFuture = http.get(
+        Uri.parse('http://10.0.2.2:5000/api/notes'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      final groupsFuture = http.get(
+        Uri.parse('http://10.0.2.2:5000/api/groups'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      final results = await Future.wait([userFuture, scheduleFuture, notesFuture, groupsFuture]);
+
+      if (!mounted) return;
+      if (results[0].statusCode == 200) {
+        final userData = jsonDecode(results[0].body);
+        _name = userData['name'] ?? '';
+        _avatar = userData['avatar'] ?? '';
+      }
+
+      if (results[1].statusCode == 200) {
+        _todaySchedules = jsonDecode(results[1].body);
+      }
+
+      if (results[2].statusCode == 200) {
+        final notes = jsonDecode(results[2].body) as List;
+        _totalNotes = notes.length;
+        // Get 3 most recent notes
+        _recentNotes = notes.take(3).toList();
+      }
+
+      if (results[3].statusCode == 200) {
+        final groups = jsonDecode(results[3].body) as List;
+        _totalGroups = groups.length;
+      }
+    } catch (_) {
+      // Silent fail
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _onAvatarTap(BuildContext context) async {
-    if (isLoggedIn) {
-      // Đã đăng nhập → Trang Cá Nhân
+    if (_isLoggedIn) {
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const ProfileScreen()),
       );
+      if (!mounted) return;
+      await _loadData();
     } else {
-      // Chưa đăng nhập → Trang Đăng Nhập
       final result = await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
-      if (result == true) {
-        setState(() => isLoggedIn = true); // cập nhật trạng thái
+      if (result == true && mounted) await _loadData();
+    }
+  }
+
+  String _timeOfDayGreeting(AppLocalizations loc) {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return loc.goodMorning;
+    if (hour < 18) return loc.goodAfternoon;
+    return loc.goodEvening;
+  }
+
+  bool _isCurrentSchedule(dynamic item) {
+    if (item is! Map) return false;
+    final raw = item['time'];
+    if (raw is! String || raw.isEmpty) return false;
+
+    final parts = raw.split('-');
+    final start = _parseTime(parts.first.trim());
+    DateTime? end;
+    if (parts.length > 1) end = _parseTime(parts[1].trim());
+    if (start == null) return false;
+    end ??= start.add(const Duration(hours: 1));
+    final now = DateTime.now();
+    return (now.isAtSameMomentAs(start) || now.isAfter(start)) && now.isBefore(end);
+  }
+
+  DateTime? _parseTime(String raw) {
+    final now = DateTime.now();
+    final sanitized = raw.replaceAll(RegExp('[^0-9a-zA-Z: ]'), '').trim();
+    final formats = [
+      DateFormat.Hm(),
+      DateFormat('HH:mm:ss'),
+      DateFormat('hh:mm a'),
+      DateFormat('h:mm a'),
+    ];
+    for (final format in formats) {
+      try {
+        final parsed = format.parseStrict(sanitized);
+        return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
+      } catch (_) {
+        continue;
       }
     }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final now = DateTime.now();
+    final dayLabel = DateFormat('EEEE', loc.localeName).format(now);
+    final dateLabel = DateFormat('d MMMM, yyyy', loc.localeName).format(now);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: AppColors.background,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              child: RefreshIndicator(
+                onRefresh: () => _loadData(showLoader: false),
+                child: ListView(
+                  padding: EdgeInsets.all(AppSpacing.screenPadding),
+                  children: [
+                    _buildHeader(context, loc, dayLabel, dateLabel),
+                    SizedBox(height: AppSpacing.sectionSpacing),
+                    const WeatherWidget(),
+                    SizedBox(height: AppSpacing.sectionSpacing),
+                    _buildQuickStats(context, loc),
+                    SizedBox(height: AppSpacing.sectionSpacing),
+                    _buildTodaySchedule(context, loc),
+                    SizedBox(height: AppSpacing.sectionSpacing),
+                    _buildRecentNotes(context, loc),
+                    SizedBox(height: AppSpacing.sectionSpacing),
+                    _buildQuickActions(context, loc),
+                  ],
+                ),
+              ),
+            ),
+
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, AppLocalizations loc, String dayLabel, String dateLabel) {
+    return AppCard(
+      padding: EdgeInsets.all(AppSpacing.xl),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_timeOfDayGreeting(loc)},',
+                  style: AppTypography.textTheme.labelLarge?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _isLoggedIn ? _name : loc.guest,
+                  style: AppTypography.greeting.copyWith(fontSize: 24),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today_rounded,
+                      size: AppSpacing.iconXs,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$dayLabel, $dateLabel',
+                      style: AppTypography.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          GestureDetector(
+            onTap: () => _onAvatarTap(context),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.primary, width: 2),
+              ),
+              child: CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.surfaceVariant,
+                backgroundImage: _isLoggedIn && _avatar.isNotEmpty
+                    ? NetworkImage('http://10.0.2.2:5000$_avatar')
+                    : const AssetImage('images/avatar.png') as ImageProvider,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickStats(BuildContext context, AppLocalizations loc) {
+    final todaySchedulesCount = _todaySchedules.length;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.event_note,
+            label: 'Lịch hôm nay',
+            value: todaySchedulesCount.toString(),
+            color: AppColors.primary,
+            gradient: AppColors.gradientBlue,
+          ),
+        ),
+        SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.description_outlined,
+            label: 'Ghi chú',
+            value: _totalNotes.toString(),
+            color: AppColors.success,
+            gradient: LinearGradient(
+              colors: [Colors.green.shade100, Colors.green.shade50],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.groups_outlined,
+            label: 'Nhóm',
+            value: _totalGroups.toString(),
+            color: Colors.purple,
+            gradient: LinearGradient(
+              colors: [Colors.purple.shade100, Colors.purple.shade50],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required Gradient gradient,
+  }) {
+    return AppCard(
+      gradient: gradient,
+      padding: EdgeInsets.all(AppSpacing.lg),
+      border: Border.all(color: color.withValues(alpha: 0.2)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: AppSpacing.iconMd),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            value,
+            style: AppTypography.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: AppTypography.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodaySchedule(BuildContext context, AppLocalizations loc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              loc.todaySchedule,
+              style: AppTypography.textTheme.titleLarge,
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ScheduleScreen()),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              label: Text(loc.viewAll),
+            ),
+          ],
+        ),
+        SizedBox(height: AppSpacing.lg),
+        if (_isLoggedIn && _todaySchedules.isNotEmpty)
+          ...List.generate(
+            _todaySchedules.length,
+            (index) {
+              final schedule = _todaySchedules[index] as Map<String, dynamic>;
+              return Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.md),
+                child: TimelineCard(
+                  time: schedule['time'] ?? '--:--',
+                  title: schedule['title'] ?? loc.noTitle,
+                  description: schedule['description'] ?? '',
+                  isActive: _isCurrentSchedule(schedule),
+                ),
+              );
+            },
+          )
+        else if (_isLoggedIn)
+          _buildEmptyState(
+            icon: Icons.event_available_outlined,
+            title: loc.noSchedule,
+            subtitle: loc.noScheduleYet,
+            actionLabel: loc.addSchedule,
+            onAction: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ScheduleScreen()),
+            ),
+          )
+        else
+          _buildEmptyState(
+            icon: Icons.login_rounded,
+            title: loc.loginToView,
+            subtitle: loc.loginToManage,
+            actionLabel: loc.login,
+            onAction: () => _onAvatarTap(context),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildRecentNotes(BuildContext context, AppLocalizations loc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Ghi chú gần đây',
+              style: AppTypography.textTheme.titleLarge,
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotesScreen()),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              label: Text(loc.viewAll),
+            ),
+          ],
+        ),
+        SizedBox(height: AppSpacing.lg),
+        if (_isLoggedIn && _recentNotes.isNotEmpty)
+          ...List.generate(
+            _recentNotes.length,
+            (index) {
+              final note = _recentNotes[index] as Map<String, dynamic>;
+              final hasAttachment = note['attachments'] != null && 
+                                    (note['attachments'] as List).isNotEmpty;
+              return Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                child: AppCard(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  onTap: () {
+                    // Navigate to note detail if needed
+                  },
+                  child: Row(
                     children: [
-                      Text(
-                        "Xin Chào,",
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: Colors.black54,
+                      Container(
+                        padding: EdgeInsets.all(AppSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          hasAttachment ? Icons.attach_file : Icons.description_outlined,
+                          color: AppColors.success,
+                          size: 20,
                         ),
                       ),
-                      Text(
-                        "Sơn",
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                      SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              note['title'] ?? 'Không có tiêu đề',
+                              style: AppTypography.textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (note['content'] != null && note['content'].toString().isNotEmpty)
+                              Text(
+                                note['content'],
+                                style: AppTypography.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
                         ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: AppColors.textTertiary,
+                        size: 20,
                       ),
                     ],
                   ),
-                  GestureDetector(
-                    onTap: () => _onAvatarTap(context),
-                    child: const CircleAvatar(
-                      radius: 22,
-                      backgroundImage: AssetImage('assets/images/avatar.jpg'),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Toggle Hôm nay / Thời khóa biểu
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFEFEF),
-                  borderRadius: BorderRadius.circular(30),
                 ),
-                child: Row(
-                  children: [
-                    // Hôm nay
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => _onTabSelected("today", context),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: selectedTab == "today"
-                                ? Colors.black
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Center(
-                            child: Text(
-                              "Hôm nay",
-                              style: GoogleFonts.poppins(
-                                color: selectedTab == "today"
-                                    ? Colors.white
-                                    : Colors.black87,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Thời khóa biểu
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => _onTabSelected("schedule", context),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: selectedTab == "schedule"
-                                ? Colors.black
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Center(
-                            child: Text(
-                              "Thời Khóa Biểu",
-                              style: GoogleFonts.poppins(
-                                color: selectedTab == "schedule"
-                                    ? Colors.white
-                                    : Colors.black87,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              // Ngày tháng
-              Text(
-                "September 12,",
-                style: GoogleFonts.poppins(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                "Thursday",
-                style: GoogleFonts.poppins(fontSize: 16, color: Colors.black54),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Weather card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Thời tiết",
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "21°C",
-                          style: GoogleFonts.poppins(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          "Địa điểm\nTP.HCM",
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          "Bình minh\n06:07",
-                          textAlign: TextAlign.right,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Hoàng hôn\n17:59",
-                          textAlign: TextAlign.right,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Ô tìm kiếm
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.search, color: Colors.grey[600]),
-                    const SizedBox(width: 10),
-                    Text(
-                      "Tìm kiếm ghi chú, công việc...",
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              Text(
-                "Công việc hôm nay",
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Task 1
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDFFFE0),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Nhóm",
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        Row(
-                          children: const [
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundImage: AssetImage(
-                                'assets/images/user1.jpg',
-                              ),
-                            ),
-                            SizedBox(width: 6),
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundImage: AssetImage(
-                                'assets/images/user2.jpg',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Chia sẻ ghi chú nhóm",
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "30 phút",
-                          style: GoogleFonts.poppins(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              "Bắt đầu 9:30 AM",
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            Text(
-                              "Kết thúc 10:00 AM",
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Task 2
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFEFD5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Ghi chú nâng cao",
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        Row(
-                          children: const [
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundImage: AssetImage(
-                                'assets/images/user3.jpg',
-                              ),
-                            ),
-                            SizedBox(width: 6),
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundImage: AssetImage(
-                                'assets/images/user4.jpg',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Client Meeting",
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 80),
-            ],
+              );
+            },
+          )
+        else if (_isLoggedIn)
+          _buildEmptyState(
+            icon: Icons.note_outlined,
+            title: 'Chưa có ghi chú',
+            subtitle: 'Tạo ghi chú đầu tiên của bạn',
+            actionLabel: loc.note,
+            onAction: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AddNoteScreen()),
+            ),
+          )
+        else
+          _buildEmptyState(
+            icon: Icons.login_rounded,
+            title: loc.loginToView,
+            subtitle: 'Đăng nhập để xem ghi chú',
+            actionLabel: loc.login,
+            onAction: () => _onAvatarTap(context),
           ),
-        ),
-      ),
+      ],
+    );
+  }
 
-      // Floating button
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
-        backgroundColor: Colors.black,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          "Ghi chú mới",
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.w500,
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String actionLabel,
+    required VoidCallback onAction,
+  }) {
+    return AppCard(
+      gradient: AppColors.gradientPurple,
+      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+      child: Column(
+        children: [
+          Icon(icon, size: 48, color: AppColors.primary),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            title,
+            style: AppTypography.textTheme.titleMedium,
+            textAlign: TextAlign.center,
           ),
-        ),
+          SizedBox(height: AppSpacing.sm),
+          Text(
+            subtitle,
+            style: AppTypography.textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: AppSpacing.lg),
+          FilledButton.icon(
+            onPressed: onAction,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(actionLabel),
+          ),
+        ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context, AppLocalizations loc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          loc.quickActions,
+          style: AppTypography.textTheme.titleLarge,
+        ),
+        SizedBox(height: AppSpacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionButton(
+                context: context,
+                icon: Icons.note_add_outlined,
+                label: loc.note,
+                color: AppColors.secondary,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddNoteScreen()),
+                ),
+              ),
+            ),
+            SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: _buildActionButton(
+                context: context,
+                icon: Icons.folder_outlined,
+                label: loc.notesList,
+                color: AppColors.accent,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NotesScreen()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return AppCard(
+      onTap: onTap,
+      padding: EdgeInsets.all(AppSpacing.lg),
+      border: Border.all(color: color.withValues(alpha: 0.3)),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: AppSpacing.borderRadiusMd,
+            ),
+            child: Icon(icon, color: color, size: AppSpacing.iconLg),
+          ),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            label,
+            style: AppTypography.textTheme.titleSmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }
