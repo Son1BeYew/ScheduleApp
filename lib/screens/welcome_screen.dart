@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'home_screen.dart'; // nếu bạn muốn chuyển thẳng vào Home
+// import '../main.dart'; // nếu bạn muốn chuyển vào MainNavigation có bottom bar
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -17,7 +19,11 @@ class WelcomeScreen extends StatelessWidget {
               Column(
                 children: [
                   const SizedBox(height: 40),
-                  Icon(Icons.access_time, size: 60, color: Colors.black87),
+                  const Icon(
+                    Icons.access_time,
+                    size: 60,
+                    color: Colors.black87,
+                  ),
                   const SizedBox(height: 12),
                   const Text(
                     "PlanMaster",
@@ -35,7 +41,7 @@ class WelcomeScreen extends StatelessWidget {
               Expanded(
                 child: Center(
                   child: Image.asset(
-                    'assets/images/welcome.png', // thêm ảnh minh họa ở đây
+                    'assets/images/welcome.png',
                     height: 240,
                     fit: BoxFit.contain,
                   ),
@@ -70,7 +76,15 @@ class WelcomeScreen extends StatelessWidget {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: () {
-                      // TODO: chuyển sang màn hình tiếp theo
+                      // 👉 Chuyển sang HomeScreen
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HomeScreen(),
+                          // hoặc nếu bạn dùng bottom nav:
+                          // builder: (context) => const MainNavigation(),
+                        ),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
