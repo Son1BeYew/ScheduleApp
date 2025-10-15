@@ -1,5 +1,16 @@
+import 'dart:convert';
+// removed unused import: dart:io
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:schedule_app/generated/app_localizations.dart';
+
+import '../main.dart';
+import 'welcome_screen.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -9,11 +20,144 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // sau này bạn sẽ lấy dữ liệu này từ API
-  String name = "";
-  String email = "";
-  String avatar = "";
-  String createdAt = "";
+  bool _loading = true;
+  String _name = "";
+  String _email = "";
+  String _avatar = "";
+  String _createdAt = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData();
+  }
+
+  String? _getUserIdFromToken(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = parts[1];
+      final normalized = base64Url.normalize(payload);
+      final resp = utf8.decode(base64Url.decode(normalized));
+      final payloadMap = json.decode(resp);
+      return payloadMap['id'];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> _fetchUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    if (token == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    final userId = _getUserIdFromToken(token);
+    if (userId == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final url = Uri.parse('http://10.0.2.2:5000/api/users/$userId');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _name = data['name'] ?? '';
+          _email = data['email'] ?? '';
+          _avatar = data['avatar'] ?? '';
+          _createdAt = data['createdAt']?.toString().split('T')[0] ?? '';
+          _loading = false;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("${AppLocalizations.of(context)!.apiError}${response.statusCode}")),
+        );
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("${AppLocalizations.of(context)!.connectionError}$e")),
+      );
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) return;
+
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile == null) return;
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('http://10.0.2.2:5000/api/users/avatar'),
+    );
+    request.headers['Authorization'] = 'Bearer $token';
+    request.files.add(await http.MultipartFile.fromPath('avatar', pickedFile.path));
+
+    try {
+      final response = await request.send();
+      if (response.statusCode == 200) {
+        _fetchUserData(); // Refresh profile
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("${AppLocalizations.of(context)!.apiError}${response.statusCode}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("${AppLocalizations.of(context)!.connectionError}$e")),
+      );
+    }
+  }
+
+  void _changeLanguage(Locale locale) {
+    MyApp.setLocale(context, locale);
+    
+    // Show confirmation with snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          locale.languageCode == 'vi' 
+            ? 'Đã đổi sang Tiếng Việt. Đang tải lại...' 
+            : 'Changed to English. Reloading...'
+        ),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+    
+    // Reload the current screen after a short delay
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _loading = true;
+        });
+        _fetchUserData();
+      }
+    });
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         title: Text(
-          "Trang Cá Nhân",
+          AppLocalizations.of(context)!.profile,
           style: GoogleFonts.poppins(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -31,116 +175,125 @@ class _ProfileScreenState extends State<ProfileScreen> {
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Avatar
-            const CircleAvatar(
-              radius: 50,
-              backgroundImage: AssetImage('assets/images/avatar.jpg'),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              "Xin chào, $name",
-              style: GoogleFonts.poppins(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: _pickAndUploadAvatar,
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundImage: _avatar.isNotEmpty
+                          ? NetworkImage('http://10.0.2.2:5000$_avatar')
+                          : const AssetImage('images/avatar.png') as ImageProvider,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "${AppLocalizations.of(context)!.hello} $_name",
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  _buildInfoCard(
+                    title: AppLocalizations.of(context)!.name,
+                    value: _name,
+                    icon: Icons.person_outline,
+                  ),
+                  _buildInfoCard(
+                    title: AppLocalizations.of(context)!.email,
+                    value: _email,
+                    icon: Icons.email_outlined,
+                  ),
+                  _buildInfoCard(
+                    title: AppLocalizations.of(context)!.password,
+                    value: "********",
+                    icon: Icons.lock_outline,
+                  ),
+                  _buildInfoCard(
+                    title: AppLocalizations.of(context)!.accountCreationDate,
+                    value: _createdAt,
+                    icon: Icons.calendar_today_outlined,
+                  ),
+                  const SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(onPressed: () => _changeLanguage(const Locale('en')), child: Text(AppLocalizations.of(context)!.english)),
+                      const SizedBox(width: 20),
+                      ElevatedButton(onPressed: () => _changeLanguage(const Locale('vi')), child: Text(AppLocalizations.of(context)!.vietnamese)),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditProfileScreen(
+                              currentName: _name,
+                              currentEmail: _email,
+                            ),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          _fetchUserData(); // Reload profile after update
+                        }
+                      },
+                      icon: const Icon(Icons.edit, color: Colors.white),
+                      label: Text(
+                        AppLocalizations.of(context)!.editProfile,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showLogoutDialog(context),
+                      icon: const Icon(Icons.logout, color: Colors.red),
+                      label: Text(
+                        AppLocalizations.of(context)!.logout,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.red,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-            const SizedBox(height: 30),
-
-            // Thông tin người dùng
-            _buildInfoCard(
-              title: "Họ và tên",
-              value: name,
-              icon: Icons.person_outline,
-            ),
-            _buildInfoCard(
-              title: "Email",
-              value: email,
-              icon: Icons.email_outlined,
-            ),
-            _buildInfoCard(
-              title: "Mật khẩu",
-              value: "********",
-              icon: Icons.lock_outline,
-            ),
-            _buildInfoCard(
-              title: "Ảnh đại diện (URL)",
-              value: avatar,
-              icon: Icons.image_outlined,
-            ),
-            _buildInfoCard(
-              title: "Ngày tạo tài khoản",
-              value: createdAt,
-              icon: Icons.calendar_today_outlined,
-            ),
-
-            const SizedBox(height: 30),
-
-            // Nút chỉnh sửa
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: mở form chỉnh sửa hoặc gọi API update
-                },
-                icon: const Icon(Icons.edit, color: Colors.white),
-                label: Text(
-                  "Chỉnh sửa thông tin",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Nút đăng xuất
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _showLogoutDialog(context);
-                },
-                icon: const Icon(Icons.logout, color: Colors.red),
-                label: Text(
-                  "Đăng xuất",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.red,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red, width: 1.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
     );
   }
 
-  // Widget cho mỗi ô thông tin
   Widget _buildInfoCard({
     required String title,
     required String value,
@@ -177,7 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  value.isNotEmpty ? value : "—", // placeholder
+                  value.isNotEmpty ? value : "—",
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -192,34 +345,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Xác nhận đăng xuất
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          "Đăng xuất",
+          AppLocalizations.of(context)!.logout,
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         content: Text(
-          "Bạn có chắc chắn muốn đăng xuất không?",
+          AppLocalizations.of(context)!.logoutConfirmation,
           style: GoogleFonts.poppins(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text("Hủy", style: GoogleFonts.poppins(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context)!.cancel, style: GoogleFonts.poppins(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
-              Navigator.pop(ctx); // đóng dialog
-              Navigator.pop(context, false); // quay lại Home và logout
-              // TODO: Xóa token / session nếu có
+              Navigator.pop(ctx);
+              _logout();
             },
             child: Text(
-              "Đăng xuất",
+              AppLocalizations.of(context)!.logout,
               style: GoogleFonts.poppins(color: Colors.white),
             ),
           ),

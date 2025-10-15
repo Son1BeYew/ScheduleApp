@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:schedule_app/generated/app_localizations.dart';
+
+import 'login_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -11,88 +14,78 @@ class WelcomeScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Logo + Title
-              Column(
-                children: [
-                  const SizedBox(height: 40),
-                  Icon(Icons.access_time, size: 60, color: Colors.black87),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "PlanMaster",
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+              const Icon(
+                Icons.access_time,
+                size: 60,
+                color: Colors.black87,
               ),
-
-              // Illustration
-              Expanded(
-                child: Center(
-                  child: Image.asset(
-                    'assets/images/welcome.png', // thêm ảnh minh họa ở đây
-                    height: 240,
-                    fit: BoxFit.contain,
-                  ),
+              const SizedBox(height: 12),
+              Text(
+                AppLocalizations.of(context)!.planMaster,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
               ),
+              const SizedBox(height: 8),
+
+              const SizedBox(height: 100),
 
               // Text
-              const Column(
-                children: [
-                  Text(
-                    "Simplify Your Schedule",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    "Tips and Tricks for Streamlined Scheduling",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                ],
+              Text(
+                AppLocalizations.of(context)!.simplifyYourSchedule,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                AppLocalizations.of(context)!.tipsAndTricks,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
               ),
 
+              const SizedBox(height: 100),
+
               // Button
-              Padding(
-                padding: const EdgeInsets.only(top: 32, bottom: 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: chuyển sang màn hình tiếp theo
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
                       ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Get Started",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        AppLocalizations.of(context)!.getStarted,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
                         ),
-                        SizedBox(width: 8),
-                        Icon(Icons.arrow_forward, color: Colors.white),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward, color: Colors.white),
+                    ],
                   ),
                 ),
               ),

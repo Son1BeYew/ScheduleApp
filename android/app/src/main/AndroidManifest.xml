@@ -1,5 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permissions for file storage (Android 12 and below) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    
+    <!-- Location permissions for weather -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- Internet for weather API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- No special permission needed for Android 13+ (scoped storage) -->
+    
     <application
+        android:requestLegacyExternalStorage="true"
         android:label="schedule_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
