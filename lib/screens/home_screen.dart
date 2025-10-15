@@ -13,7 +13,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String selectedTab = "today"; // today | schedule
-  bool isLoggedIn = false; // trạng thái đăng nhập (giả lập)
+  bool isLoggedIn = false; // trạng thái đăng nhập
+  String? userName; // tên user sau khi login
 
   // === Chuyển giữa 2 tab ===
   void _onTabSelected(String tab, BuildContext context) {
@@ -40,18 +41,26 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } else {
       // Chưa đăng nhập → Trang Đăng Nhập
+      // YÊU CẦU: LoginScreen cần pop về 1 String là tên user khi login thành công
+      // ví dụ: Navigator.pop(context, user.name);
       final result = await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
-      if (result == true) {
-        setState(() => isLoggedIn = true); // cập nhật trạng thái
+
+      if (result is String && result.trim().isNotEmpty) {
+        setState(() {
+          isLoggedIn = true;
+          userName = result.trim(); // ghi nhận tên user
+        });
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final greetName = userName ?? 'Bạn';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
@@ -75,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       Text(
-                        "Sơn",
+                        greetName, // <--- thay cho "Sơn"
                         style: GoogleFonts.poppins(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,

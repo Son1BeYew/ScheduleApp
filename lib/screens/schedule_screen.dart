@@ -23,9 +23,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   Future<void> fetchSchedules() async {
     try {
       // ⚠️ ID user thật (hoặc lấy từ token SharedPreferences)
-      const userId = "6710a3e0f5b891f493cf3c01";
+      const userId = "68ee62c4778f224b7b17bbf9";
 
-      final url = Uri.parse("http://10.0.2.2:5000/api/schedules/$userId");
+      final url = Uri.parse("http://10.0.2.2:5000/api/schedules/");
       final res = await http.get(url);
 
       if (res.statusCode == 200) {
