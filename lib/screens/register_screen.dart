@@ -7,39 +7,40 @@ import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:schedule_app/config/api_config.dart';
 
 import '../main.dart';
-import 'register_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
   String? _error;
 
-  Future<void> _login() async {
+  Future<void> _register() async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final url = Uri.parse('${ApiConfig.apiAuth}/login');
+      final url = Uri.parse('${ApiConfig.apiAuth}/register');
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
+          "name": _nameController.text.trim(),
           "email": _emailController.text.trim(),
           "password": _passwordController.text.trim(),
         }),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
         final token = data["token"];
         final prefs = await SharedPreferences.getInstance();
@@ -51,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       } else {
         final data = jsonDecode(response.body);
-        final errorMessage = data["message"] ?? AppLocalizations.of(context)!.loginFailed;
+        final errorMessage = data["message"] ?? AppLocalizations.of(context)!.registrationFailed;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage)),
         );
@@ -70,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.login, style: GoogleFonts.poppins()),
+        title: Text(AppLocalizations.of(context)!.register, style: GoogleFonts.poppins()),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
@@ -80,6 +81,15 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(AppLocalizations.of(context)!.name, style: GoogleFonts.poppins(fontSize: 14)),
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                hintText: AppLocalizations.of(context)!.enterNameHint,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(AppLocalizations.of(context)!.email, style: GoogleFonts.poppins(fontSize: 14)),
             TextField(
               controller: _emailController,
@@ -104,31 +114,15 @@ class _LoginScreenState extends State<LoginScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _loading ? null : _login,
+                onPressed: _loading ? null : _register,
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
                 child: _loading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : Text(
-                        AppLocalizations.of(context)!.login,
+                        AppLocalizations.of(context)!.register,
                         style: GoogleFonts.poppins(color: Colors.white),
                       ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(AppLocalizations.of(context)!.noAccount, style: GoogleFonts.poppins()),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                    );
-                  },
-                  child: Text(AppLocalizations.of(context)!.register, style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-                ),
-              ],
             ),
           ],
         ),
