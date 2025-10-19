@@ -416,6 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         SizedBox(height: AppSpacing.lg),
         if (_isLoggedIn && _todaySchedules.isNotEmpty)
+
           ...List.generate(_todaySchedules.length, (index) {
             final schedule = _todaySchedules[index] as Map<String, dynamic>;
             return Padding(
@@ -429,6 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           })
+
         else if (_isLoggedIn)
           _buildEmptyState(
             icon: Icons.event_available_outlined,
