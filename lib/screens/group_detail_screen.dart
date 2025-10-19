@@ -29,15 +29,21 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   Map<String, dynamic> _group = {};
   List _notes = [];
   List _members = [];
+  List<Map<String, dynamic>> _messages = [];
+  final Set<String> _messageIds = {};
+
   late TabController _tabController;
   final _socketService = SocketService();
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _setupSocketListeners();
     _fetchGroupDetails();
+    _fetchMessages();
   }
 
   @override
@@ -46,7 +52,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     _socketService.offNoteUpdated();
     _socketService.offNoteDeleted();
     _socketService.leaveGroup(widget.groupId);
+    _socketService.disconnect();
     _tabController.dispose();
+    _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -100,6 +109,55 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
           );
         }
       });
+
+      _socketService.onMessageReceived((data) {
+        print('💬 Realtime Message: $data');
+        if (mounted) {
+          final messageId = data['_id'] ?? data['id'] ?? '';
+          final messageContent = data['content'] ?? data['message'] ?? '';
+          final senderName = data['sender']?['fullname'] ??
+              data['senderName'] ??
+              'Ẩn danh';
+
+          setState(() {
+            bool foundMatch = false;
+            for (int i = _messages.length - 1; i >= 0; i--) {
+              final msg = _messages[i];
+              if (msg['_id'] == null &&
+                  msg['sender'] == 'Bạn' &&
+                  msg['message'] == messageContent) {
+                _messages[i] = {
+                  '_id': messageId,
+                  'sender': senderName,
+                  'message': messageContent,
+                  'timestamp': data['createdAt'] ?? msg['timestamp'],
+                };
+                if (messageId.isNotEmpty) {
+                  _messageIds.add(messageId);
+                }
+                foundMatch = true;
+                break;
+              }
+            }
+
+            if (!foundMatch) {
+              if (messageId.isEmpty || !_messageIds.contains(messageId)) {
+                final newMessage = {
+                  '_id': messageId,
+                  'sender': senderName,
+                  'message': messageContent,
+                  'timestamp': data['createdAt'] ?? DateTime.now().toString(),
+                };
+                _messages.add(newMessage);
+                if (messageId.isNotEmpty) {
+                  _messageIds.add(messageId);
+                }
+              }
+            }
+          });
+          _scrollToBottom();
+        }
+      });
     }
   }
 
@@ -150,6 +208,118 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
       }
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _fetchMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) {
+      print('❌ Token not found');
+      return;
+    }
+
+    try {
+      final url = Uri.parse(
+        '${ApiConfig.apiGroups}/${widget.groupId}/messages',
+      );
+      print('📡 Fetching messages from: $url');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      print('📥 Response status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('📦 Decoded data: $data');
+
+        List messageList = [];
+        
+        if (data is Map) {
+          if (data.containsKey('data') && data['data'] is List) {
+            messageList = data['data'];
+          } else if (data.containsKey('messages') && data['messages'] is List) {
+            messageList = data['messages'];
+          }
+        } else if (data is List) {
+          messageList = data;
+        }
+
+        print('📋 Message list length: ${messageList.length}');
+
+        final msgs = messageList
+            .map(
+              (m) => {
+                '_id': m['_id'] ?? m['id'] ?? '',
+                'sender': m['sender']?['fullname'] ?? 'Ẩn danh',
+                'message': m['content'] ?? '',
+                'timestamp': m['createdAt'] ?? DateTime.now().toIso8601String(),
+              },
+            )
+            .toList();
+
+        setState(() {
+          _messages = msgs.reversed.toList();
+          _messageIds.clear();
+          for (var msg in _messages) {
+            final id = msg['_id'] ?? '';
+            if (id.isNotEmpty) {
+              _messageIds.add(id);
+            }
+          }
+        });
+        print('✅ Loaded ${_messages.length} messages');
+        _scrollToBottom();
+      } else {
+        print('⚠️ Fetch messages failed: ${response.statusCode}');
+        print('📥 Response: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Lỗi tải tin nhắn: $e');
+    }
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _sendMessage() {
+    if (_messageController.text.trim().isEmpty) return;
+
+    final msg = _messageController.text.trim();
+    
+    if (!_socketService.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Lỗi: Không kết nối đến server'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _messages.add({
+        '_id': null,
+        'sender': 'Bạn',
+        'message': msg,
+        'timestamp': DateTime.now().toString(),
+      });
+    });
+
+    _socketService.sendMessage(widget.groupId, msg);
+    _messageController.clear();
+    _scrollToBottom();
   }
 
   void _navigateToAddNote() async {
@@ -272,8 +442,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Ghi chú', icon: Icon(Icons.note_outlined, size: 20)),
-            Tab(text: 'Thành viên', icon: Icon(Icons.people_outlined, size: 20)),
+            Tab(icon: Icon(Icons.note_alt_outlined), text: 'Ghi chú'),
+            Tab(icon: Icon(Icons.chat_outlined), text: 'Chat'),
+            Tab(icon: Icon(Icons.people_alt_outlined), text: 'Thành viên'),
           ],
         ),
       ),
@@ -283,6 +454,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
               controller: _tabController,
               children: [
                 _buildNotesTab(loc),
+                _buildChatTab(),
                 _buildMembersTab(),
               ],
             ),
@@ -366,6 +538,101 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
           );
         },
       ),
+    );
+  }
+
+  Widget _buildChatTab() {
+    return Column(
+      children: [
+        Expanded(
+          child: _messages.isEmpty
+              ? Center(
+                  child: Text(
+                    'Chưa có tin nhắn',
+                    style: AppTypography.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = _messages[index];
+                    final isMe = msg['sender'] == 'Bạn';
+                    return Align(
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        decoration: BoxDecoration(
+                          color: isMe
+                              ? AppColors.primaryLight
+                              : AppColors.surface,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: isMe
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            if (!isMe)
+                              Text(
+                                msg['sender'],
+                                style: AppTypography.textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              msg['message'],
+                              style: AppTypography.textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: InputDecoration(
+                    hintText: 'Nhập tin nhắn...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FloatingActionButton.small(
+                onPressed: _sendMessage,
+                child: const Icon(Icons.send_rounded),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

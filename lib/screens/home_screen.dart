@@ -107,7 +107,12 @@ class _HomeScreenState extends State<HomeScreen> {
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      final results = await Future.wait([userFuture, scheduleFuture, notesFuture, groupsFuture]);
+      final results = await Future.wait([
+        userFuture,
+        scheduleFuture,
+        notesFuture,
+        groupsFuture,
+      ]);
 
       if (!mounted) return;
       if (results[0].statusCode == 200) {
@@ -174,7 +179,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (start == null) return false;
     end ??= start.add(const Duration(hours: 1));
     final now = DateTime.now();
-    return (now.isAtSameMomentAs(start) || now.isAfter(start)) && now.isBefore(end);
+    return (now.isAtSameMomentAs(start) || now.isAfter(start)) &&
+        now.isBefore(end);
   }
 
   DateTime? _parseTime(String raw) {
@@ -189,7 +195,13 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final format in formats) {
       try {
         final parsed = format.parseStrict(sanitized);
-        return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
+        return DateTime(
+          now.year,
+          now.month,
+          now.day,
+          parsed.hour,
+          parsed.minute,
+        );
       } catch (_) {
         continue;
       }
@@ -229,11 +241,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
     );
   }
 
-  Widget _buildHeader(BuildContext context, AppLocalizations loc, String dayLabel, String dateLabel) {
+  Widget _buildHeader(
+    BuildContext context,
+    AppLocalizations loc,
+    String dayLabel,
+    String dateLabel,
+  ) {
     return AppCard(
       padding: EdgeInsets.all(AppSpacing.xl),
       child: Row(
@@ -371,10 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: AppTypography.textTheme.bodySmall,
-          ),
+          Text(label, style: AppTypography.textTheme.bodySmall),
         ],
       ),
     );
@@ -386,17 +399,17 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Row(
           children: [
-            Text(
-              loc.todaySchedule,
-              style: AppTypography.textTheme.titleLarge,
-            ),
+            Text(loc.todaySchedule, style: AppTypography.textTheme.titleLarge),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ScheduleScreen()),
               ),
-              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              icon: const Icon(
+                Icons.arrow_forward_rounded,
+                size: AppSpacing.iconSm,
+              ),
               label: Text(loc.viewAll),
             ),
           ],
@@ -448,17 +461,17 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Row(
           children: [
-            Text(
-              'Ghi chú gần đây',
-              style: AppTypography.textTheme.titleLarge,
-            ),
+            Text('Ghi chú gần đây', style: AppTypography.textTheme.titleLarge),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const NotesScreen()),
               ),
-              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              icon: const Icon(
+                Icons.arrow_forward_rounded,
+                size: AppSpacing.iconSm,
+              ),
               label: Text(loc.viewAll),
             ),
           ],
@@ -503,12 +516,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (note['content'] != null && note['content'].toString().isNotEmpty)
+                            if (note['content'] != null &&
+                                note['content'].toString().isNotEmpty)
                               Text(
                                 note['content'],
-                                style: AppTypography.textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
+                                style: AppTypography.textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.textSecondary),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -589,10 +602,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          loc.quickActions,
-          style: AppTypography.textTheme.titleLarge,
-        ),
+        Text(loc.quickActions, style: AppTypography.textTheme.titleLarge),
         SizedBox(height: AppSpacing.lg),
         Row(
           children: [

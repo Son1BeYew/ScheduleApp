@@ -68,7 +68,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Không cần cấp quyền bộ nhớ. File sẽ lưu trong thư mục app.'),
+                  content: Text(
+                    'Không cần cấp quyền bộ nhớ. File sẽ lưu trong thư mục app.',
+                  ),
                   duration: Duration(seconds: 3),
                 ),
               );
@@ -85,7 +87,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       );
 
       if (response.statusCode == 200) {
-        // Get download directory  
+        // Get download directory
         Directory? directory;
         if (Platform.isAndroid) {
           // Try to get Downloads directory, fallback to app directory
@@ -103,7 +105,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
         // Save file with friendly name
         final timestamp = DateTime.now();
-        final filename = 'Lich_hoc_${timestamp.day}_${timestamp.month}_${timestamp.year}_${timestamp.hour}h${timestamp.minute}.ics';
+        final filename =
+            'Lich_hoc_${timestamp.day}_${timestamp.month}_${timestamp.year}_${timestamp.hour}h${timestamp.minute}.ics';
         final filePath = '${directory.path}/$filename';
         final file = File(filePath);
         await file.writeAsBytes(response.bodyBytes);
@@ -129,10 +132,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ],
               ),
               duration: const Duration(seconds: 6),
-              action: SnackBarAction(
-                label: 'OK',
-                onPressed: () {},
-              ),
+              action: SnackBarAction(label: 'OK', onPressed: () {}),
             ),
           );
         }
@@ -142,10 +142,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -185,12 +182,18 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("${AppLocalizations.of(context)!.apiError}${res.statusCode}")),
+          SnackBar(
+            content: Text(
+              "${AppLocalizations.of(context)!.apiError}${res.statusCode}",
+            ),
+          ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${AppLocalizations.of(context)!.connectionError}$e")),
+        SnackBar(
+          content: Text("${AppLocalizations.of(context)!.connectionError}$e"),
+        ),
       );
     } finally {
       setState(() {
@@ -215,12 +218,18 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         fetchSchedules(); // Refresh the list
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("${AppLocalizations.of(context)!.apiError}${response.statusCode}")),
+          SnackBar(
+            content: Text(
+              "${AppLocalizations.of(context)!.apiError}${response.statusCode}",
+            ),
+          ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${AppLocalizations.of(context)!.connectionError}$e")),
+        SnackBar(
+          content: Text("${AppLocalizations.of(context)!.connectionError}$e"),
+        ),
       );
     }
   }
@@ -233,7 +242,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         automaticallyImplyLeading: false, // We are in the main navigation flow
         actions: [
           IconButton(
-            icon: _isExporting 
+            icon: _isExporting
                 ? const SizedBox(
                     width: 20,
                     height: 20,
@@ -241,7 +250,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   )
                 : const Icon(Icons.file_download),
             tooltip: 'Xuất file .ics',
-            onPressed: (schedules.isEmpty || _isExporting) ? null : _exportSchedules,
+            onPressed: (schedules.isEmpty || _isExporting)
+                ? null
+                : _exportSchedules,
           ),
           IconButton(
             icon: const Icon(Icons.auto_awesome),
@@ -260,28 +271,27 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : schedules.isEmpty
-              ? _buildEmptyState()
-              : Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: ListView.builder(
-                    itemCount: schedules.length,
-                    itemBuilder: (context, index) {
-                      final item = schedules[index];
-                      final title = item["title"] ?? AppLocalizations.of(context)!.noTitle;
-                      final time = item["time"] ?? "—";
-                      final desc = item["description"] ?? "";
-                      final date = item["date"]?.toString().split("T")[0] ?? "";
-                      return _buildScheduleItem(item, time, title, desc, date);
-                    },
-                  ),
-                ),
+          ? _buildEmptyState()
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: ListView.builder(
+                itemCount: schedules.length,
+                itemBuilder: (context, index) {
+                  final item = schedules[index];
+                  final title =
+                      item["title"] ?? AppLocalizations.of(context)!.noTitle;
+                  final time = item["time"] ?? "—";
+                  final desc = item["description"] ?? "";
+                  final date = item["date"]?.toString().split("T")[0] ?? "";
+                  return _buildScheduleItem(item, time, title, desc, date);
+                },
+              ),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const EditScheduleScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const EditScheduleScreen()),
           );
           if (result == true) {
             fetchSchedules();
@@ -317,10 +327,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             Text(
               'Tạo lịch học mới bằng nút + bên dưới',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -346,8 +353,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        title: Text(subject, style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
-        subtitle: Text("$room  |  $date", style: textTheme.bodyMedium?.copyWith(color: Colors.grey[600])),
+        title: Text(
+          subject,
+          style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          "$room  |  $date",
+          style: textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+        ),
         trailing: PopupMenuButton(
           onSelected: (value) async {
             if (value == 'edit') {

@@ -109,4 +109,38 @@ class SocketService {
   void offUserLeft() {
     _socket?.off('user-left');
   }
+
+  void sendMessage(String groupId, String message) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('send-message', {
+        'groupId': groupId,
+        'message': message,
+      });
+      print('📨 Message sent to group $groupId');
+    }
+  }
+
+  void onMessageReceived(Function(dynamic) callback) {
+    _socket?.on('message-received', callback);
+  }
+
+  void offMessageReceived() {
+    _socket?.off('message-received');
+  }
+
+  void onMessageSent(Function(dynamic) callback) {
+    _socket?.on('message-sent', callback);
+  }
+
+  void offMessageSent() {
+    _socket?.off('message-sent');
+  }
+
+  void onMessageError(Function(dynamic) callback) {
+    _socket?.on('message-error', callback);
+  }
+
+  void offMessageError() {
+    _socket?.off('message-error');
+  }
 }
