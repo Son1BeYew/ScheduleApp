@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class EditScheduleScreen extends StatefulWidget {
   final Map<String, dynamic>? schedule;
@@ -17,6 +18,7 @@ class EditScheduleScreen extends StatefulWidget {
 class _EditScheduleScreenState extends State<EditScheduleScreen> {
   final _titleController = TextEditingController();
   final _timeController = TextEditingController();
+  final _endTimeController = TextEditingController();
   final _descController = TextEditingController();
   final _dateController = TextEditingController();
   bool _loading = false;
@@ -28,6 +30,7 @@ class _EditScheduleScreenState extends State<EditScheduleScreen> {
     if (_isEditing) {
       _titleController.text = widget.schedule!['title'] ?? '';
       _timeController.text = widget.schedule!['time'] ?? '';
+      _endTimeController.text = widget.schedule!['endTime'] ?? '';
       _descController.text = widget.schedule!['description'] ?? '';
       _dateController.text = widget.schedule!['date']?.toString().split('T')[0] ?? '';
     }
@@ -44,13 +47,14 @@ class _EditScheduleScreenState extends State<EditScheduleScreen> {
       final body = jsonEncode({
         'title': _titleController.text,
         'time': _timeController.text,
+        'endTime': _endTimeController.text,
         'description': _descController.text,
         'date': _dateController.text,
       });
 
       final response = _isEditing
           ? await http.put(
-              Uri.parse('http://10.0.2.2:5000/api/schedules/${widget.schedule!['_id']}'),
+              Uri.parse('${ApiConfig.apiSchedules}/${widget.schedule!['_id']}'),
               headers: {
                 'Authorization': 'Bearer $token',
                 'Content-Type': 'application/json',
@@ -58,7 +62,7 @@ class _EditScheduleScreenState extends State<EditScheduleScreen> {
               body: body,
             )
           : await http.post(
-              Uri.parse('http://10.0.2.2:5000/api/schedules'),
+              Uri.parse(ApiConfig.apiSchedules),
               headers: {
                 'Authorization': 'Bearer $token',
                 'Content-Type': 'application/json',
@@ -123,6 +127,23 @@ class _EditScheduleScreenState extends State<EditScheduleScreen> {
     }
   }
 
+  Future<void> _selectEndTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _endTimeController.text.isNotEmpty
+          ? TimeOfDay(
+              hour: int.tryParse(_endTimeController.text.split(':')[0]) ?? 0,
+              minute: int.tryParse(_endTimeController.text.split(':')[1]) ?? 0,
+            )
+          : TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _endTimeController.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,12 +182,23 @@ class _EditScheduleScreenState extends State<EditScheduleScreen> {
             TextField(
               controller: _timeController,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(context)!.time,
-                hintText: 'Chọn giờ',
+                labelText: 'Giờ bắt đầu',
+                hintText: 'Chọn giờ bắt đầu',
                 prefixIcon: const Icon(Icons.access_time),
               ),
               readOnly: true,
               onTap: _selectTime,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _endTimeController,
+              decoration: const InputDecoration(
+                labelText: 'Giờ kết thúc',
+                hintText: 'Chọn giờ kết thúc',
+                prefixIcon: Icon(Icons.schedule),
+              ),
+              readOnly: true,
+              onTap: _selectEndTime,
             ),
             const SizedBox(height: 16),
             TextField(

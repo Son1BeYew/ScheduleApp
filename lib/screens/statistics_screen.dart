@@ -8,6 +8,7 @@ import 'package:schedule_app/theme/app_colors.dart';
 import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/app_card.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -42,7 +43,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         return;
       }
 
-      final url = Uri.parse('http://10.0.2.2:5000/api/schedules/stats/by-day');
+      final url = Uri.parse('${ApiConfig.apiSchedules}/stats/by-day');
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},

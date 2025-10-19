@@ -10,12 +10,14 @@ import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/app_card.dart';
 import 'package:schedule_app/widgets/cards/timeline_card.dart';
 import 'package:schedule_app/widgets/weather_widget.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import 'add_note_screen.dart';
 import 'login_screen.dart';
 import 'notes_screen.dart';
 import 'profile_screen.dart';
 import 'schedule_screen.dart';
+import 'group_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -86,22 +88,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final userFuture = http.get(
-        Uri.parse('http://10.0.2.2:5000/api/users/$userId'),
+        Uri.parse('${ApiConfig.apiUsers}/$userId'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
       final scheduleFuture = http.get(
-        Uri.parse('http://10.0.2.2:5000/api/schedules/$userId/today'),
+        Uri.parse('${ApiConfig.apiSchedules}/$userId/today'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
       final notesFuture = http.get(
-        Uri.parse('http://10.0.2.2:5000/api/notes'),
+        Uri.parse(ApiConfig.apiNotes),
         headers: {'Authorization': 'Bearer $token'},
       );
 
       final groupsFuture = http.get(
-        Uri.parse('http://10.0.2.2:5000/api/groups'),
+        Uri.parse(ApiConfig.apiGroups),
         headers: {'Authorization': 'Bearer $token'},
       );
 
@@ -299,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 radius: 28,
                 backgroundColor: AppColors.surfaceVariant,
                 backgroundImage: _isLoggedIn && _avatar.isNotEmpty
-                    ? NetworkImage('http://10.0.2.2:5000$_avatar')
+                    ? NetworkImage(ApiConfig.getEndpoint(_avatar))
                     : const AssetImage('images/avatar.png') as ImageProvider,
               ),
             ),
@@ -339,15 +341,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         SizedBox(width: AppSpacing.md),
         Expanded(
-          child: _buildStatCard(
-            icon: Icons.groups_outlined,
-            label: 'Nhóm',
-            value: _totalGroups.toString(),
-            color: Colors.purple,
-            gradient: LinearGradient(
-              colors: [Colors.purple.shade100, Colors.purple.shade50],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+          child: GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GroupScreen()),
+            ),
+            child: _buildStatCard(
+              icon: Icons.groups_outlined,
+              label: 'Nhóm',
+              value: _totalGroups.toString(),
+              color: Colors.purple,
+              gradient: LinearGradient(
+                colors: [Colors.purple.shade100, Colors.purple.shade50],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
           ),
         ),
@@ -414,6 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.only(bottom: AppSpacing.md),
               child: TimelineCard(
                 time: schedule['time'] ?? '--:--',
+                endTime: schedule['endTime'],
                 title: schedule['title'] ?? loc.noTitle,
                 description: schedule['description'] ?? '',
                 isActive: _isCurrentSchedule(schedule),
@@ -483,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: EdgeInsets.all(AppSpacing.sm),
                       decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.1),
+                        color: AppColors.success.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(

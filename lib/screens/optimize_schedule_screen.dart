@@ -6,6 +6,7 @@ import 'package:schedule_app/theme/app_colors.dart';
 import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/app_card.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class OptimizeScheduleScreen extends StatefulWidget {
   const OptimizeScheduleScreen({super.key});
@@ -118,7 +119,7 @@ class _OptimizeScheduleScreenState extends State<OptimizeScheduleScreen> {
       if (token == null) throw Exception('Token not found');
 
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:5000/api/schedules/optimize'),
+        Uri.parse('${ApiConfig.apiSchedules}/optimize'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -191,7 +192,7 @@ class _OptimizeScheduleScreenState extends State<OptimizeScheduleScreen> {
           final subject = daySchedule['morning'];
           try {
             await http.post(
-              Uri.parse('http://10.0.2.2:5000/api/schedules'),
+              Uri.parse(ApiConfig.apiSchedules),
               headers: {
                 'Authorization': 'Bearer $token',
                 'Content-Type': 'application/json',

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import 'edit_schedule_screen.dart';
 import 'optimize_schedule_screen.dart';
@@ -81,7 +82,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
       // Call API to get .ics file
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:5000/api/schedules/export'),
+        Uri.parse('${ApiConfig.apiSchedules}/export'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
@@ -168,7 +169,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         return;
       }
 
-      final url = Uri.parse("http://10.0.2.2:5000/api/schedules/");
+      final url = Uri.parse(ApiConfig.apiSchedules);
       final res = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -208,7 +209,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (token == null) return;
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/schedules/$scheduleId');
+      final url = Uri.parse('${ApiConfig.apiSchedules}/$scheduleId');
       final response = await http.delete(
         url,
         headers: {'Authorization': 'Bearer $token'},

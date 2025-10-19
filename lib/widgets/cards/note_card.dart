@@ -9,6 +9,7 @@ class NoteCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onShare;
   final Color? backgroundColor;
   final bool? hasAttachment;
   final String? groupName;
@@ -20,6 +21,7 @@ class NoteCard extends StatelessWidget {
     this.onTap,
     this.onEdit,
     this.onDelete,
+    this.onShare,
     this.backgroundColor,
     this.hasAttachment,
     this.groupName,
@@ -65,7 +67,7 @@ class NoteCard extends StatelessWidget {
                         color: AppColors.textTertiary,
                       ),
                     ),
-                  if (onEdit != null || onDelete != null)
+                  if (onEdit != null || onDelete != null || onShare != null)
                     PopupMenuButton<String>(
                       icon: Icon(
                         Icons.more_vert,
@@ -80,6 +82,8 @@ class NoteCard extends StatelessWidget {
                           onEdit!();
                         } else if (value == 'delete' && onDelete != null) {
                           onDelete!();
+                        } else if (value == 'share' && onShare != null) {
+                          onShare!();
                         }
                       },
                       itemBuilder: (context) => [
@@ -90,7 +94,18 @@ class NoteCard extends StatelessWidget {
                               children: [
                                 Icon(Icons.edit_outlined, size: AppSpacing.iconSm),
                                 SizedBox(width: AppSpacing.sm),
-                                Text('Edit'),
+                                Text('Sửa'),
+                              ],
+                            ),
+                          ),
+                        if (onShare != null)
+                          const PopupMenuItem(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                Icon(Icons.share_outlined, size: AppSpacing.iconSm),
+                                SizedBox(width: AppSpacing.sm),
+                                Text('Chia sẻ'),
                               ],
                             ),
                           ),
@@ -101,7 +116,7 @@ class NoteCard extends StatelessWidget {
                               children: [
                                 Icon(Icons.delete_outline, size: AppSpacing.iconSm),
                                 SizedBox(width: AppSpacing.sm),
-                                Text('Delete'),
+                                Text('Xóa'),
                               ],
                             ),
                           ),

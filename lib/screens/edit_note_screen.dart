@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class EditNoteScreen extends StatefulWidget {
   final Map<String, dynamic>? note;
@@ -51,8 +52,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       if (token == null) throw Exception('Token not found');
 
       final url = _isEditing
-          ? 'http://10.0.2.2:5000/api/notes/${widget.note!['_id']}'
-          : 'http://10.0.2.2:5000/api/notes';
+          ? '${ApiConfig.apiNotes}/${widget.note!['_id']}'
+          : ApiConfig.apiNotes;
       
       final request = http.MultipartRequest(
         _isEditing ? 'PUT' : 'POST',
@@ -131,7 +132,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     if (_isEditing && widget.note!['attachments'] != null) {
       final attachments = widget.note!['attachments'] as List;
       if (attachments.isNotEmpty) {
-        existingAttachmentUrl = 'http://10.0.2.2:5000${attachments[0]}';
+        existingAttachmentUrl = ApiConfig.getEndpoint(attachments[0]);
       }
     }
 

@@ -7,8 +7,10 @@ import 'package:schedule_app/theme/app_colors.dart';
 import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/note_card.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import 'edit_note_screen.dart';
+import 'share_note_dialog.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -41,7 +43,7 @@ class _NotesScreenState extends State<NotesScreen> {
         throw Exception('Token not found');
       }
 
-      final url = Uri.parse('http://10.0.2.2:5000/api/notes');
+      final url = Uri.parse(ApiConfig.apiNotes);
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -94,7 +96,7 @@ class _NotesScreenState extends State<NotesScreen> {
       final token = prefs.getString('token');
       if (token == null) throw Exception('Token not found');
 
-      final url = Uri.parse('http://10.0.2.2:5000/api/notes/$noteId');
+      final url = Uri.parse('${ApiConfig.apiNotes}/$noteId');
       final response = await http.delete(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -132,6 +134,20 @@ class _NotesScreenState extends State<NotesScreen> {
         builder: (context) => EditNoteScreen(note: note),
       ),
     );
+    if (result == true) {
+      _fetchNotes();
+    }
+  }
+
+  void _showShareDialog(Map<String, dynamic> note) async {
+    final result = await showDialog(
+      context: context,
+      builder: (context) => ShareNoteDialog(
+        noteId: note['_id'],
+        noteTitle: note['title'] ?? 'Untitled',
+      ),
+    );
+    
     if (result == true) {
       _fetchNotes();
     }
@@ -288,6 +304,7 @@ class _NotesScreenState extends State<NotesScreen> {
             onTap: () => _navigateToEditScreen(note: note),
             onEdit: () => _navigateToEditScreen(note: note),
             onDelete: () => _deleteNote(note['_id']),
+            onShare: () => _showShareDialog(note),
           );
         },
       ),

@@ -22,12 +22,36 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   String? _error;
 
   // OpenWeatherMap API key - FREE tier
-  static const String _apiKey = 'bd5e378503939ddaee76f12ad7a97608'; // Demo key
+  // Get your free API key at: https://openweathermap.org/api
+  // TODO: Replace with your own API key
+  static const String _apiKey = 'YOUR_API_KEY_HERE'; // Replace this!
+  
+  // TEMPORARY: Use mock data for testing (set to false when have real API key)
+  static const bool _useMockData = true;
   
   @override
   void initState() {
     super.initState();
-    _fetchWeather();
+    if (_useMockData) {
+      _loadMockData();
+    } else {
+      _fetchWeather();
+    }
+  }
+
+  void _loadMockData() {
+    // Simulate API delay
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _city = 'Ha Noi';
+          _temp = 28.5;
+          _description = 'Trời nắng, ít mây';
+          _icon = '01d';
+          _loading = false;
+        });
+      }
+    });
   }
 
   Future<void> _fetchWeather() async {

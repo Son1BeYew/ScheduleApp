@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class AddNoteScreen extends StatefulWidget {
   final String? groupId;
@@ -43,13 +44,16 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     setState(() => _loading = true);
 
     try {
-      // Create note with multipart if has attachment
-      final noteUrl = Uri.parse('http://10.0.2.2:5000/api/notes');
+      final noteUrl = Uri.parse(ApiConfig.apiNotes);
       
       final request = http.MultipartRequest('POST', noteUrl);
       request.headers['Authorization'] = 'Bearer $token';
       request.fields['title'] = title;
       request.fields['content'] = content;
+      
+      if (widget.groupId != null) {
+        request.fields['groupId'] = widget.groupId!;
+      }
 
       if (_imageFile != null) {
         request.files.add(
@@ -61,22 +65,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
       final noteResponse = await http.Response.fromStream(streamedResponse);
 
       if (noteResponse.statusCode == 201) {
-        final note = jsonDecode(noteResponse.body);
-        final noteId = note['_id'];
-
-        // If it's a group note, add it to the group
-        if (widget.groupId != null) {
-          final groupUrl = Uri.parse('http://10.0.2.2:5000/api/groups/${widget.groupId}/notes');
-          await http.post(
-            groupUrl,
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'noteId': noteId}),
-          );
-        }
-
         if (mounted) {
           Navigator.of(context).pop(true);
         }
