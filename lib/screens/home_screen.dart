@@ -107,7 +107,12 @@ class _HomeScreenState extends State<HomeScreen> {
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      final results = await Future.wait([userFuture, scheduleFuture, notesFuture, groupsFuture]);
+      final results = await Future.wait([
+        userFuture,
+        scheduleFuture,
+        notesFuture,
+        groupsFuture,
+      ]);
 
       if (!mounted) return;
       if (results[0].statusCode == 200) {
@@ -174,7 +179,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (start == null) return false;
     end ??= start.add(const Duration(hours: 1));
     final now = DateTime.now();
-    return (now.isAtSameMomentAs(start) || now.isAfter(start)) && now.isBefore(end);
+    return (now.isAtSameMomentAs(start) || now.isAfter(start)) &&
+        now.isBefore(end);
   }
 
   DateTime? _parseTime(String raw) {
@@ -189,7 +195,13 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final format in formats) {
       try {
         final parsed = format.parseStrict(sanitized);
-        return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
+        return DateTime(
+          now.year,
+          now.month,
+          now.day,
+          parsed.hour,
+          parsed.minute,
+        );
       } catch (_) {
         continue;
       }
@@ -229,11 +241,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
     );
   }
 
-  Widget _buildHeader(BuildContext context, AppLocalizations loc, String dayLabel, String dateLabel) {
+  Widget _buildHeader(
+    BuildContext context,
+    AppLocalizations loc,
+    String dayLabel,
+    String dateLabel,
+  ) {
     return AppCard(
       padding: EdgeInsets.all(AppSpacing.xl),
       child: Row(
@@ -371,10 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: AppTypography.textTheme.bodySmall,
-          ),
+          Text(label, style: AppTypography.textTheme.bodySmall),
         ],
       ),
     );
@@ -386,39 +399,38 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Row(
           children: [
-            Text(
-              loc.todaySchedule,
-              style: AppTypography.textTheme.titleLarge,
-            ),
+            Text(loc.todaySchedule, style: AppTypography.textTheme.titleLarge),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ScheduleScreen()),
               ),
-              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              icon: const Icon(
+                Icons.arrow_forward_rounded,
+                size: AppSpacing.iconSm,
+              ),
               label: Text(loc.viewAll),
             ),
           ],
         ),
         SizedBox(height: AppSpacing.lg),
         if (_isLoggedIn && _todaySchedules.isNotEmpty)
-          ...List.generate(
-            _todaySchedules.length,
-            (index) {
-              final schedule = _todaySchedules[index] as Map<String, dynamic>;
-              return Padding(
-                padding: EdgeInsets.only(bottom: AppSpacing.md),
-                child: TimelineCard(
-                  time: schedule['time'] ?? '--:--',
-                  endTime: schedule['endTime'],
-                  title: schedule['title'] ?? loc.noTitle,
-                  description: schedule['description'] ?? '',
-                  isActive: _isCurrentSchedule(schedule),
-                ),
-              );
-            },
-          )
+
+          ...List.generate(_todaySchedules.length, (index) {
+            final schedule = _todaySchedules[index] as Map<String, dynamic>;
+            return Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.md),
+              child: TimelineCard(
+                time: schedule['time'] ?? '--:--',
+                endTime: schedule['endTime'],
+                title: schedule['title'] ?? loc.noTitle,
+                description: schedule['description'] ?? '',
+                isActive: _isCurrentSchedule(schedule),
+              ),
+            );
+          })
+
         else if (_isLoggedIn)
           _buildEmptyState(
             icon: Icons.event_available_outlined,
@@ -448,84 +460,84 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Row(
           children: [
-            Text(
-              'Ghi chú gần đây',
-              style: AppTypography.textTheme.titleLarge,
-            ),
+            Text('Ghi chú gần đây', style: AppTypography.textTheme.titleLarge),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const NotesScreen()),
               ),
-              icon: const Icon(Icons.arrow_forward_rounded, size: AppSpacing.iconSm),
+              icon: const Icon(
+                Icons.arrow_forward_rounded,
+                size: AppSpacing.iconSm,
+              ),
               label: Text(loc.viewAll),
             ),
           ],
         ),
         SizedBox(height: AppSpacing.lg),
         if (_isLoggedIn && _recentNotes.isNotEmpty)
-          ...List.generate(
-            _recentNotes.length,
-            (index) {
-              final note = _recentNotes[index] as Map<String, dynamic>;
-              final hasAttachment = note['attachments'] != null && 
-                                    (note['attachments'] as List).isNotEmpty;
-              return Padding(
-                padding: EdgeInsets.only(bottom: AppSpacing.sm),
-                child: AppCard(
-                  padding: EdgeInsets.all(AppSpacing.md),
-                  onTap: () {
-                    // Navigate to note detail if needed
-                  },
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          hasAttachment ? Icons.attach_file : Icons.description_outlined,
-                          color: AppColors.success,
-                          size: 20,
-                        ),
+          ...List.generate(_recentNotes.length, (index) {
+            final note = _recentNotes[index] as Map<String, dynamic>;
+            final hasAttachment =
+                note['attachments'] != null &&
+                (note['attachments'] as List).isNotEmpty;
+            return Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.sm),
+              child: AppCard(
+                padding: EdgeInsets.all(AppSpacing.md),
+                onTap: () {
+                  // Navigate to note detail if needed
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                      child: Icon(
+                        hasAttachment
+                            ? Icons.attach_file
+                            : Icons.description_outlined,
+                        color: AppColors.success,
+                        size: 20,
+                      ),
+                    ),
+                    SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            note['title'] ?? 'Không có tiêu đề',
+                            style: AppTypography.textTheme.titleSmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (note['content'] != null &&
+                              note['content'].toString().isNotEmpty)
                             Text(
-                              note['title'] ?? 'Không có tiêu đề',
-                              style: AppTypography.textTheme.titleSmall,
+                              note['content'],
+                              style: AppTypography.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textSecondary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (note['content'] != null && note['content'].toString().isNotEmpty)
-                              Text(
-                                note['content'],
-                                style: AppTypography.textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
+                        ],
                       ),
-                      Icon(
-                        Icons.chevron_right,
-                        color: AppColors.textTertiary,
-                        size: 20,
-                      ),
-                    ],
-                  ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.textTertiary,
+                      size: 20,
+                    ),
+                  ],
                 ),
-              );
-            },
-          )
+              ),
+            );
+          })
         else if (_isLoggedIn)
           _buildEmptyState(
             icon: Icons.note_outlined,
@@ -589,10 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          loc.quickActions,
-          style: AppTypography.textTheme.titleLarge,
-        ),
+        Text(loc.quickActions, style: AppTypography.textTheme.titleLarge),
         SizedBox(height: AppSpacing.lg),
         Row(
           children: [
