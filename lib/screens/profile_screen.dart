@@ -7,10 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import '../main.dart';
 import 'welcome_screen.dart';
 import 'edit_profile_screen.dart';
+import 'admin_dashboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -25,6 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _email = "";
   String _avatar = "";
   String _createdAt = "";
+  String _role = "user";
 
   @override
   void initState() {
@@ -62,7 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/users/$userId');
+      final url = Uri.parse('${ApiConfig.apiUsers}/$userId');
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -75,6 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _email = data['email'] ?? '';
           _avatar = data['avatar'] ?? '';
           _createdAt = data['createdAt']?.toString().split('T')[0] ?? '';
+          _role = data['role'] ?? 'user';
           _loading = false;
         });
       } else {
@@ -103,7 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://10.0.2.2:5000/api/users/avatar'),
+      Uri.parse('${ApiConfig.apiUsers}/avatar'),
     );
     request.headers['Authorization'] = 'Bearer $token';
     request.files.add(await http.MultipartFile.fromPath('avatar', pickedFile.path));
@@ -186,7 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: CircleAvatar(
                       radius: 50,
                       backgroundImage: _avatar.isNotEmpty
-                          ? NetworkImage('http://10.0.2.2:5000$_avatar')
+                          ? NetworkImage(ApiConfig.getEndpoint(_avatar))
                           : const AssetImage('images/avatar.png') as ImageProvider,
                     ),
                   ),
@@ -265,6 +269,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  
+                  // Admin Dashboard Button (only for admin)
+                  if (_role == 'admin') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+                        ),
+                        icon: const Icon(Icons.admin_panel_settings),
+                        label: Text(
+                          'Admin Dashboard',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
                   SizedBox(
                     width: double.infinity,
                     height: 50,

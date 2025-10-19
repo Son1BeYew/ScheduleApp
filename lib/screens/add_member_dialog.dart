@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class AddMemberDialog extends StatefulWidget {
   final String groupId;
@@ -37,7 +38,7 @@ class _AddMemberDialogState extends State<AddMemberDialog> {
     if (token == null) return;
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/users/search?query=$query');
+      final url = Uri.parse('${ApiConfig.apiUsers}/search?query=$query');
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -63,7 +64,7 @@ class _AddMemberDialogState extends State<AddMemberDialog> {
     if (token == null) return;
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/groups/${widget.groupId}/members');
+      final url = Uri.parse('${ApiConfig.apiGroups}/${widget.groupId}/members');
       final response = await http.put(
         url,
         headers: {

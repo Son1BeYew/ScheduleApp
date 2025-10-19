@@ -8,6 +8,8 @@ import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/app_card.dart';
 import 'package:schedule_app/widgets/cards/note_card.dart';
+import 'package:schedule_app/services/socket_service.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import 'add_note_screen.dart';
 import 'add_member_dialog.dart';
@@ -28,18 +30,77 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   List _notes = [];
   List _members = [];
   late TabController _tabController;
+  final _socketService = SocketService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _setupSocketListeners();
     _fetchGroupDetails();
   }
 
   @override
   void dispose() {
+    _socketService.offNoteCreated();
+    _socketService.offNoteUpdated();
+    _socketService.offNoteDeleted();
+    _socketService.leaveGroup(widget.groupId);
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setupSocketListeners() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    
+    if (token != null) {
+      _socketService.connect(token);
+      _socketService.joinGroup(widget.groupId);
+      
+      _socketService.onNoteCreated((data) {
+        print('🔔 Note created: ${data['note']['title']}');
+        _fetchGroupDetails();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${data['createdByName']} đã tạo ghi chú mới'),
+              duration: const Duration(seconds: 2),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      });
+      
+      _socketService.onNoteUpdated((data) {
+        print('🔔 Note updated: ${data['noteId']}');
+        _fetchGroupDetails();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${data['updatedByName']} đã cập nhật ghi chú'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+      
+      _socketService.onNoteDeleted((data) {
+        print('🔔 Note deleted: ${data['noteId']}');
+        _fetchGroupDetails();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Một ghi chú đã bị xóa'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+    }
   }
 
   Future<void> _fetchGroupDetails() async {
@@ -53,7 +114,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     }
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/groups/${widget.groupId}');
+      final url = Uri.parse('${ApiConfig.apiGroups}/${widget.groupId}');
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -129,7 +190,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     if (token == null) return;
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/notes/$noteId');
+      final url = Uri.parse('${ApiConfig.apiNotes}/$noteId');
       final response = await http.delete(
         url,
         headers: {'Authorization': 'Bearer $token'},

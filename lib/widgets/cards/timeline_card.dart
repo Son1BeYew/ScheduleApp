@@ -5,6 +5,7 @@ import 'package:schedule_app/theme/app_typography.dart';
 
 class TimelineCard extends StatelessWidget {
   final String time;
+  final String? endTime;
   final String title;
   final String? description;
   final bool isActive;
@@ -13,6 +14,7 @@ class TimelineCard extends StatelessWidget {
   const TimelineCard({
     super.key,
     required this.time,
+    this.endTime,
     required this.title,
     this.description,
     this.isActive = false,
@@ -63,7 +65,9 @@ class TimelineCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      time,
+                      endTime != null && endTime!.isNotEmpty 
+                          ? '$time - $endTime' 
+                          : time,
                       style: AppTypography.timeLabel.copyWith(
                         color: isActive
                             ? AppColors.textOnPrimary.withValues(alpha: 0.8)

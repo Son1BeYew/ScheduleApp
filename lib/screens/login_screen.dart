@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import '../main.dart';
 import 'register_screen.dart';
@@ -28,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/auth/login');
+      final url = Uri.parse('${ApiConfig.apiAuth}/login');
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},

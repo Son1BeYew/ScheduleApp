@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 import 'group_detail_screen.dart';
 
@@ -38,7 +39,7 @@ class _GroupScreenState extends State<GroupScreen> {
     }
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/groups');
+      final url = Uri.parse(ApiConfig.apiGroups);
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $token'},
@@ -73,7 +74,7 @@ class _GroupScreenState extends State<GroupScreen> {
     }
 
     try {
-      final url = Uri.parse('http://10.0.2.2:5000/api/groups');
+      final url = Uri.parse(ApiConfig.apiGroups);
       final response = await http.post(
         url,
         headers: {

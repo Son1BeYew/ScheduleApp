@@ -6,6 +6,7 @@ import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:schedule_app/theme/app_colors.dart';
 import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
+import 'package:schedule_app/config/api_config.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -55,7 +56,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       final response = await http.put(
-        Uri.parse('http://10.0.2.2:5000/api/users/'),
+        Uri.parse(ApiConfig.apiUsers),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
