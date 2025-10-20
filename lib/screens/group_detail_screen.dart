@@ -478,6 +478,67 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     );
   }
 
+  void _showDeleteGroupDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Giải tán nhóm'),
+        content: const Text('Bạn có chắc muốn giải tán nhóm này? Tất cả tin nhắn sẽ bị xóa.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteGroup();
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Giải tán'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteGroup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) return;
+
+    try {
+      final url = Uri.parse('${ApiConfig.apiGroups}/${widget.groupId}');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nhóm đã được giải tán'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        throw Exception('Failed to delete group');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   Color _getNoteColor(int index) {
     final colors = [
       AppColors.categoryBlue,
@@ -512,6 +573,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
             icon: const Icon(Icons.person_add_rounded),
             onPressed: _showAddMemberDialog,
             tooltip: 'Thêm thành viên',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: _showDeleteGroupDialog,
+            tooltip: 'Giải tán nhóm',
           ),
         ],
         bottom: TabBar(
