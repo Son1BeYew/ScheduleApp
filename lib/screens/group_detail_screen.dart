@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:schedule_app/theme/app_colors.dart';
-import 'package:schedule_app/theme/app_spacing.dart';
 import 'package:schedule_app/theme/app_typography.dart';
 import 'package:schedule_app/widgets/cards/app_card.dart';
 import 'package:schedule_app/widgets/cards/note_card.dart';
@@ -17,14 +16,14 @@ import 'edit_note_screen.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final String groupId;
-
   const GroupDetailScreen({super.key, required this.groupId});
 
   @override
   State<GroupDetailScreen> createState() => _GroupDetailScreenState();
 }
 
-class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTickerProviderStateMixin {
+class _GroupDetailScreenState extends State<GroupDetailScreen>
+    with SingleTickerProviderStateMixin {
   bool _loading = true;
   Map<String, dynamic> _group = {};
   List _notes = [];
@@ -46,19 +45,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
 
   Future<void> _initializeData() async {
     print('🟦 _initializeData started');
-    
+
     print('1️⃣ Fetching group details...');
     await _fetchGroupDetails();
     print('1️⃣ fetchGroupDetails complete');
-    
+
     print('2️⃣ Calling setupSocketListeners...');
     await _setupSocketListeners();
     print('2️⃣ setupSocketListeners complete');
-    
+
     print('3️⃣ Fetching messages...');
     await _fetchMessages();
     print('3️⃣ fetchMessages complete');
-    
+
     print('🟩 _initializeData complete');
   }
 
@@ -70,72 +69,36 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     _socketService.offGroupMessage();
     _socketService.offGroupError();
     _socketService.leaveGroup(widget.groupId);
+    _socketService.disconnect();
     _tabController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
+  // ======================= SOCKET =======================
   Future<void> _setupSocketListeners() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
-    
+
     if (token != null) {
       print('🔵 Setting up socket listeners...');
       _socketService.connect(token);
-      
+
       // Wait for socket to connect before joining group
       print('⏳ Waiting for socket connection...');
       await _socketService.waitForConnection();
       print('✅ Socket connected, joining group...');
-      
+
       _socketService.joinGroup(widget.groupId);
-      
+
       // Wait a bit for server to process joinGroup
       print('⏳ Waiting for joinGroup to be processed...');
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       _socketService.onNoteCreated((data) {
         print('🔔 Note created: ${data['note']['title']}');
         _fetchGroupDetails();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${data['createdByName']} đã tạo ghi chú mới'),
-              duration: const Duration(seconds: 2),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        }
-      });
-      
-      _socketService.onNoteUpdated((data) {
-        print('🔔 Note updated: ${data['noteId']}');
-        _fetchGroupDetails();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${data['updatedByName']} đã cập nhật ghi chú'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      });
-      
-      _socketService.onNoteDeleted((data) {
-        print('🔔 Note deleted: ${data['noteId']}');
-        _fetchGroupDetails();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Một ghi chú đã bị xóa'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
       });
 
       _socketService.onGroupMessage((data) {
@@ -147,7 +110,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
 
           setState(() {
             bool foundMatch = false;
-            // Check if this is a confirmation of a message we just sent
             for (int i = _messages.length - 1; i >= 0; i--) {
               final msg = _messages[i];
               if (msg['_id'] == null &&
@@ -167,7 +129,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
               }
             }
 
-            // If not found in pending messages, add as new message
             if (!foundMatch) {
               if (messageId.isNotEmpty && !_messageIds.contains(messageId)) {
                 final newMessage = {
@@ -196,20 +157,17 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
           );
         }
       });
-      
+
       print('✅ Socket listeners setup complete');
     }
   }
 
+  // ======================= API CALL =======================
   Future<void> _fetchGroupDetails() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
-
-    if (token == null) {
-      setState(() => _loading = false);
-      return;
-    }
+    if (token == null) return;
 
     try {
       final url = Uri.parse('${ApiConfig.apiGroups}/${widget.groupId}');
@@ -227,21 +185,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
           _loading = false;
         });
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("API Error: ${response.statusCode}"),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-        setState(() => _loading = false);
+        throw Exception("API Error: ${response.statusCode}");
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Connection Error: $e"),
+            content: Text("Lỗi khi tải dữ liệu nhóm: $e"),
             backgroundColor: AppColors.error,
           ),
         );
@@ -280,10 +230,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('📦 Decoded data type: ${data.runtimeType}');
-        print('📦 Data keys: ${data is Map ? data.keys.toList() : "not a map"}');
+        print(
+          '📦 Data keys: ${data is Map ? data.keys.toList() : "not a map"}',
+        );
 
         List messageList = [];
-        
+
         if (data is Map) {
           print('  ℹ️ Data is a Map');
           if (data.containsKey('data')) {
@@ -321,7 +273,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
         setState(() {
           _messages = msgs;
           print('   _messages count after assignment: ${_messages.length}');
-          
+
           _messageIds.clear();
           for (var msg in _messages) {
             final id = msg['_id'] ?? '';
@@ -359,7 +311,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
 
   void _sendMessage() {
     print('🔵 _sendMessage called');
-    
+
     if (_messageController.text.trim().isEmpty) {
       print('⚠️ Message is empty');
       return;
@@ -368,7 +320,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     final msg = _messageController.text.trim();
     print('📝 Message text: $msg');
     print('🔌 Socket connected: ${_socketService.isConnected}');
-    
+
     if (!_socketService.isConnected) {
       print('❌ Socket not connected, showing error');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -397,93 +349,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     print('✅ Message processing complete');
   }
 
-  void _navigateToAddNote() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AddNoteScreen(groupId: widget.groupId),
-      ),
-    );
-
-    if (result == true) _fetchGroupDetails();
-  }
-
-  Future<void> _deleteNote(String noteId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xác nhận xóa'),
-        content: const Text('Bạn có chắc muốn xóa ghi chú này khỏi nhóm?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Xóa'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    if (token == null) return;
-
-    try {
-      final url = Uri.parse('${ApiConfig.apiNotes}/$noteId');
-      final response = await http.delete(
-        url,
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã xóa ghi chú'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        }
-        _fetchGroupDetails();
-      } else {
-        throw Exception('Failed to delete');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Lỗi: $e"),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showAddMemberDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AddMemberDialog(
-          groupId: widget.groupId,
-          onMemberAdded: _fetchGroupDetails,
-        );
-      },
-    );
-  }
-
   void _showDeleteGroupDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Giải tán nhóm'),
-        content: const Text('Bạn có chắc muốn giải tán nhóm này? Tất cả tin nhắn sẽ bị xóa.'),
+        content: const Text(
+          'Bạn có chắc muốn giải tán nhóm này? Tất cả tin nhắn sẽ bị xóa.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -530,10 +403,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $e'),
-            backgroundColor: AppColors.error,
-          ),
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -552,7 +422,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final groupName = _group['name'] ?? loc.group;
+    final groupName = _group['name'] ?? 'Nhóm';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -570,9 +440,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add_rounded),
+            icon: const Icon(Icons.person_add_alt_1_rounded),
             onPressed: _showAddMemberDialog,
-            tooltip: 'Thêm thành viên',
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -599,54 +468,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
                 _buildMembersTab(),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddNote,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Thêm ghi chú'),
-      ),
     );
   }
 
   Widget _buildNotesTab(AppLocalizations loc) {
     if (_notes.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: AppSpacing.paddingXxl,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.note_add_outlined,
-                size: 64,
-                color: AppColors.textTertiary,
-              ),
-              SizedBox(height: AppSpacing.lg),
-              Text(
-                'Chưa có ghi chú nào',
-                style: AppTypography.textTheme.titleMedium,
-              ),
-              SizedBox(height: AppSpacing.sm),
-              Text(
-                'Thêm ghi chú đầu tiên cho nhóm của bạn',
-                style: AppTypography.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: AppSpacing.lg),
-              FilledButton.icon(
-                onPressed: _navigateToAddNote,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Thêm ghi chú'),
-              ),
-            ],
-          ),
-        ),
+      return _emptyState(
+        icon: Icons.note_alt_outlined,
+        title: 'Chưa có ghi chú nào',
+        description: 'Thêm ghi chú đầu tiên cho nhóm của bạn',
+        actionLabel: 'Thêm ghi chú',
+        onPressed: _navigateToAddNote,
       );
     }
 
     return RefreshIndicator(
       onRefresh: _fetchGroupDetails,
       child: ListView.builder(
-        padding: EdgeInsets.all(AppSpacing.screenPadding),
+        padding: const EdgeInsets.all(16),
         itemCount: _notes.length,
         itemBuilder: (context, index) {
           final note = _notes[index] as Map<String, dynamic>;
@@ -655,18 +494,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
             content: note['content'] ?? 'Không có nội dung',
             backgroundColor: _getNoteColor(index),
             groupName: _group['name'],
-            hasAttachment: note['attachments'] != null && 
-                          (note['attachments'] as List).isNotEmpty,
+            hasAttachment: (note['attachments'] as List?)?.isNotEmpty ?? false,
             onTap: () async {
-              final result = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EditNoteScreen(note: note),
-                ),
-              );
-              if (result == true) _fetchGroupDetails();
-            },
-            onEdit: () async {
               final result = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
@@ -779,98 +608,56 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
 
   Widget _buildMembersTab() {
     if (_members.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: AppSpacing.paddingXxl,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.group_add_outlined,
-                size: 64,
-                color: AppColors.textTertiary,
-              ),
-              SizedBox(height: AppSpacing.lg),
-              Text(
-                'Chưa có thành viên',
-                style: AppTypography.textTheme.titleMedium,
-              ),
-              SizedBox(height: AppSpacing.sm),
-              Text(
-                'Mời bạn bè tham gia nhóm',
-                style: AppTypography.textTheme.bodyMedium,
-              ),
-              SizedBox(height: AppSpacing.lg),
-              FilledButton.icon(
-                onPressed: _showAddMemberDialog,
-                icon: const Icon(Icons.person_add_rounded),
-                label: const Text('Thêm thành viên'),
-              ),
-            ],
-          ),
-        ),
+      return _emptyState(
+        icon: Icons.people_alt_outlined,
+        title: 'Chưa có thành viên',
+        description: 'Mời bạn bè tham gia nhóm',
+        actionLabel: 'Thêm thành viên',
+        onPressed: _showAddMemberDialog,
       );
     }
 
     return RefreshIndicator(
       onRefresh: _fetchGroupDetails,
       child: ListView.builder(
-        padding: EdgeInsets.all(AppSpacing.screenPadding),
+        padding: const EdgeInsets.all(16),
         itemCount: _members.length,
         itemBuilder: (context, index) {
-          final member = _members[index];
-          final memberName = member['name'] ?? 'Người dùng ${index + 1}';
-          final memberEmail = member['email'] ?? '';
-          
+          final m = _members[index];
+          final name = m['fullname'] ?? 'Người dùng';
+          final email = m['email'] ?? '';
+
           return AppCard(
-            padding: AppSpacing.paddingLg,
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: AppColors.primaryLight.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.primaryLight.withValues(
+                    alpha: 0.2,
+                  ),
                   child: Text(
-                    memberName.isNotEmpty ? memberName[0].toUpperCase() : '?',
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: AppTypography.textTheme.titleMedium?.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                SizedBox(width: AppSpacing.lg),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        memberName,
-                        style: AppTypography.cardTitle,
-                      ),
-                      if (memberEmail.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                      Text(name, style: AppTypography.cardTitle),
+                      if (email.isNotEmpty)
                         Text(
-                          memberEmail,
-                          style: AppTypography.textTheme.bodySmall,
+                          email,
+                          style: AppTypography.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ],
                     ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.successLight,
-                    borderRadius: AppSpacing.borderRadiusSm,
-                  ),
-                  child: Text(
-                    'Thành viên',
-                    style: AppTypography.textTheme.labelSmall?.copyWith(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
               ],
@@ -879,5 +666,117 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
         },
       ),
     );
+  }
+
+  Widget _emptyState({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String actionLabel,
+    required VoidCallback onPressed,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 64, color: AppColors.textTertiary),
+            const SizedBox(height: 12),
+            Text(title, style: AppTypography.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: AppTypography.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onPressed,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(actionLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAddNote() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddNoteScreen(groupId: widget.groupId),
+      ),
+    );
+
+    if (result == true) _fetchGroupDetails();
+  }
+
+  void _showAddMemberDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AddMemberDialog(
+        groupId: widget.groupId,
+        onMemberAdded: _fetchGroupDetails,
+      ),
+    );
+  }
+
+  Future<void> _deleteNote(String noteId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text('Bạn có chắc muốn xóa ghi chú này khỏi nhóm?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) return;
+
+    try {
+      final url = Uri.parse(
+        '${ApiConfig.apiGroups}/${widget.groupId}/notes/$noteId',
+      );
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã xóa ghi chú'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _fetchGroupDetails();
+        }
+      } else {
+        throw Exception('Failed to delete note');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 }
