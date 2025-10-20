@@ -40,13 +40,34 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _setupSocketListeners();
-    _fetchGroupDetails();
-    _fetchMessages(); // ✅ tải tin nhắn thật từ backend khi mở nhóm
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    print('🟦 _initializeData started');
+
+    print('1️⃣ Fetching group details...');
+    await _fetchGroupDetails();
+    print('1️⃣ fetchGroupDetails complete');
+
+    print('2️⃣ Calling setupSocketListeners...');
+    await _setupSocketListeners();
+    print('2️⃣ setupSocketListeners complete');
+
+    print('3️⃣ Fetching messages...');
+    await _fetchMessages();
+    print('3️⃣ fetchMessages complete');
+
+    print('🟩 _initializeData complete');
   }
 
   @override
   void dispose() {
+    _socketService.offNoteCreated();
+    _socketService.offNoteUpdated();
+    _socketService.offNoteDeleted();
+    _socketService.offGroupMessage();
+    _socketService.offGroupError();
     _socketService.leaveGroup(widget.groupId);
     _socketService.disconnect();
     _tabController.dispose();
@@ -61,21 +82,33 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     final token = prefs.getString('token');
 
     if (token != null) {
+      print('🔵 Setting up socket listeners...');
       _socketService.connect(token);
+
+      // Wait for socket to connect before joining group
+      print('⏳ Waiting for socket connection...');
+      await _socketService.waitForConnection();
+      print('✅ Socket connected, joining group...');
+
       _socketService.joinGroup(widget.groupId);
 
-      // 💬 Nhận tin nhắn realtime
-      _socketService.onMessageReceived((data) {
+      // Wait a bit for server to process joinGroup
+      print('⏳ Waiting for joinGroup to be processed...');
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      _socketService.onNoteCreated((data) {
+        print('🔔 Note created: ${data['note']['title']}');
+        _fetchGroupDetails();
+      });
+
+      _socketService.onGroupMessage((data) {
         print('💬 Realtime Message: $data');
         if (mounted) {
-          final messageId = data['_id'] ?? data['id'] ?? '';
-          final messageContent = data['content'] ?? data['message'] ?? '';
-          final senderName = data['sender']?['fullname'] ??
-              data['senderName'] ??
-              'Ẩn danh';
+          final messageId = data['_id'] ?? '';
+          final messageContent = data['content'] ?? '';
+          final senderName = data['sender']?['fullname'] ?? 'Ẩn danh';
 
           setState(() {
-            // Cố gắng match với tin nhắn pending (optimistic update)
             bool foundMatch = false;
             for (int i = _messages.length - 1; i >= 0; i--) {
               final msg = _messages[i];
@@ -96,9 +129,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
               }
             }
 
-            // Nếu không match, thêm tin nhắn mới (từ người khác)
             if (!foundMatch) {
-              if (messageId.isEmpty || !_messageIds.contains(messageId)) {
+              if (messageId.isNotEmpty && !_messageIds.contains(messageId)) {
                 final newMessage = {
                   '_id': messageId,
                   'sender': senderName,
@@ -106,15 +138,27 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                   'timestamp': data['createdAt'] ?? DateTime.now().toString(),
                 };
                 _messages.add(newMessage);
-                if (messageId.isNotEmpty) {
-                  _messageIds.add(messageId);
-                }
+                _messageIds.add(messageId);
               }
             }
           });
           _scrollToBottom();
         }
       });
+
+      _socketService.onGroupError((data) {
+        print('❌ Group error: $data');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${data['message'] ?? 'Unknown error'}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      });
+
+      print('✅ Socket listeners setup complete');
     }
   }
 
@@ -156,14 +200,16 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     }
   }
 
-  // ✅ Load tin nhắn thật từ DB
   Future<void> _fetchMessages() async {
+    print('📨 _fetchMessages called, groupId: ${widget.groupId}');
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     if (token == null) {
       print('❌ Token not found');
       return;
     }
+
+    print('✅ Token found: ${token.substring(0, 20)}...');
 
     try {
       final url = Uri.parse(
@@ -176,23 +222,38 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
       );
 
       print('📥 Response status: ${response.statusCode}');
-      print('📥 Response body: ${response.body}');
+      print('📥 Response body length: ${response.body.length}');
+      if (response.body.length < 500) {
+        print('📥 Response body: ${response.body}');
+      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('📦 Decoded data: $data');
+        print('📦 Decoded data type: ${data.runtimeType}');
+        print(
+          '📦 Data keys: ${data is Map ? data.keys.toList() : "not a map"}',
+        );
 
         List messageList = [];
-        
-        // Cố gắng các cách khác nhau để lấy messages
+
         if (data is Map) {
-          if (data.containsKey('data') && data['data'] is List) {
-            messageList = data['data'];
-          } else if (data.containsKey('messages') && data['messages'] is List) {
+          print('  ℹ️ Data is a Map');
+          if (data.containsKey('data')) {
+            print('  ✅ Found "data" key, type: ${data['data'].runtimeType}');
+            if (data['data'] is List) {
+              messageList = data['data'];
+            }
+          } else if (data.containsKey('messages')) {
+            print('  ✅ Found "messages" key');
             messageList = data['messages'];
+          } else {
+            print('  ⚠️ No "data" or "messages" key found!');
           }
         } else if (data is List) {
+          print('  ℹ️ Data is a List');
           messageList = data;
+        } else {
+          print('  ❌ Unknown data type!');
         }
 
         print('📋 Message list length: ${messageList.length}');
@@ -208,8 +269,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
             )
             .toList();
 
+        print('🔵 Setting messages via setState...');
         setState(() {
-          _messages = msgs.reversed.toList();
+          _messages = msgs;
+          print('   _messages count after assignment: ${_messages.length}');
+
           _messageIds.clear();
           for (var msg in _messages) {
             final id = msg['_id'] ?? '';
@@ -217,19 +281,22 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
               _messageIds.add(id);
             }
           }
+          print('   _messageIds count: ${_messageIds.length}');
         });
-        print('✅ Loaded ${_messages.length} messages');
+        print('✅ Loaded ${_messages.length} messages (oldest first)');
+        print('✅ Widget will rebuild now');
         _scrollToBottom();
+        print('✅ Scroll completed');
       } else {
         print('⚠️ Fetch messages failed: ${response.statusCode}');
         print('📥 Response: ${response.body}');
       }
-    } catch (e) {
-      print('❌ Lỗi tải tin nhắn: $e');
+    } catch (e, stackTrace) {
+      print('❌ Exception in _fetchMessages: $e');
+      print('📍 Stack trace: $stackTrace');
     }
   }
 
-  // ======================= CHAT UI =======================
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 200), () {
       if (_scrollController.hasClients) {
@@ -243,11 +310,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+    print('🔵 _sendMessage called');
+
+    if (_messageController.text.trim().isEmpty) {
+      print('⚠️ Message is empty');
+      return;
+    }
 
     final msg = _messageController.text.trim();
-    
+    print('📝 Message text: $msg');
+    print('🔌 Socket connected: ${_socketService.isConnected}');
+
     if (!_socketService.isConnected) {
+      print('❌ Socket not connected, showing error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Lỗi: Không kết nối đến server'),
@@ -257,6 +332,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
       return;
     }
 
+    print('✅ Socket connected, adding message to UI');
     setState(() {
       _messages.add({
         '_id': null,
@@ -266,12 +342,83 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
       });
     });
 
+    print('📤 Calling socketService.sendMessage');
     _socketService.sendMessage(widget.groupId, msg);
     _messageController.clear();
     _scrollToBottom();
+    print('✅ Message processing complete');
   }
 
-  // ======================= BUILD UI =======================
+  void _showDeleteGroupDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Giải tán nhóm'),
+        content: const Text(
+          'Bạn có chắc muốn giải tán nhóm này? Tất cả tin nhắn sẽ bị xóa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteGroup();
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Giải tán'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteGroup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) return;
+
+    try {
+      final url = Uri.parse('${ApiConfig.apiGroups}/${widget.groupId}');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nhóm đã được giải tán'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        throw Exception('Failed to delete group');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  Color _getNoteColor(int index) {
+    final colors = [
+      AppColors.categoryBlue,
+      AppColors.categoryPurple,
+      AppColors.categoryGreen,
+      AppColors.categoryYellow,
+    ];
+    return colors[index % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
@@ -296,6 +443,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
             icon: const Icon(Icons.person_add_alt_1_rounded),
             onPressed: _showAddMemberDialog,
           ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: _showDeleteGroupDialog,
+            tooltip: 'Giải tán nhóm',
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -319,7 +471,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     );
   }
 
-  // ======================= TAB: GHI CHÚ =======================
   Widget _buildNotesTab(AppLocalizations loc) {
     if (_notes.isEmpty) {
       return _emptyState(
@@ -360,7 +511,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     );
   }
 
-  // ======================= TAB: CHAT =======================
   Widget _buildChatTab() {
     return Column(
       children: [
@@ -421,46 +571,41 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                   },
                 ),
         ),
-        _buildChatInput(),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: InputDecoration(
+                    hintText: 'Nhập tin nhắn...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FloatingActionButton.small(
+                onPressed: _sendMessage,
+                child: const Icon(Icons.send_rounded),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildChatInput() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                hintText: 'Nhập tin nhắn...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          FloatingActionButton.small(
-            onPressed: _sendMessage,
-            child: const Icon(Icons.send_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ======================= TAB: THÀNH VIÊN =======================
   Widget _buildMembersTab() {
     if (_members.isEmpty) {
       return _emptyState(
@@ -523,7 +668,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     );
   }
 
-  // ======================= HELPER =======================
   Widget _emptyState({
     required IconData icon,
     required String title,
@@ -558,16 +702,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     );
   }
 
-  Color _getNoteColor(int index) {
-    final colors = [
-      AppColors.categoryBlue,
-      AppColors.categoryPurple,
-      AppColors.categoryGreen,
-      AppColors.categoryYellow,
-    ];
-    return colors[index % colors.length];
-  }
-
   void _navigateToAddNote() async {
     final result = await Navigator.push<bool>(
       context,
@@ -575,6 +709,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
         builder: (context) => AddNoteScreen(groupId: widget.groupId),
       ),
     );
+
     if (result == true) _fetchGroupDetails();
   }
 
@@ -589,6 +724,59 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   }
 
   Future<void> _deleteNote(String noteId) async {
-    // same as before
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text('Bạn có chắc muốn xóa ghi chú này khỏi nhóm?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null) return;
+
+    try {
+      final url = Uri.parse(
+        '${ApiConfig.apiGroups}/${widget.groupId}/notes/$noteId',
+      );
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã xóa ghi chú'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _fetchGroupDetails();
+        }
+      } else {
+        throw Exception('Failed to delete note');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 }

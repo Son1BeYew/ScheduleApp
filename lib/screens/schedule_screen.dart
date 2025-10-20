@@ -170,12 +170,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       }
 
       final url = Uri.parse(ApiConfig.apiSchedules);
-
-      final res = await http.get(
-        url,
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
+      final res = await http.get(url, headers: {
+        'Authorization': 'Bearer $token',
+      });
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);

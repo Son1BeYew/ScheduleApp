@@ -16,8 +16,9 @@ class ApiConfig {
 
   // Helper to get full endpoint or asset URL
   static String getEndpoint(String path) {
+    // If path already starts with http, return as-is
     if (path.startsWith('http')) return path;
-
+    // If path starts with /, it's likely an asset/upload path
     if (path.startsWith('/')) return '$baseUrl$path';
     return '$baseUrl/$path';
   }
