@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:schedule_app/config/api_config.dart';
+import 'package:schedule_app/services/socket_service.dart';
 
 import '../main.dart';
 import 'register_screen.dart';
@@ -54,6 +55,11 @@ class _LoginScreenState extends State<LoginScreen> {
         final token = data["token"];
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('token', token);
+
+        print('✅ Login success, reconnecting socket...');
+        // Reconnect socket with new token
+        final socketService = SocketService();
+        socketService.reconnect(token);
 
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(

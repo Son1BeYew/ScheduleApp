@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schedule_app/generated/app_localizations.dart';
 import 'package:schedule_app/config/api_config.dart';
+import 'package:schedule_app/services/socket_service.dart';
 
 import '../main.dart';
 import 'welcome_screen.dart';
@@ -152,15 +153,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _fetchUserData();
       }
     });
-  }
-
-  Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-      (route) => false,
-    );
   }
 
   @override
@@ -411,6 +403,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _logout() async {
+    print('🔴 Logging out...');
+    
+    // Disconnect socket
+    final socketService = SocketService();
+    socketService.disconnect();
+    print('✅ Socket disconnected');
+    
+    // Clear token
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    print('✅ Token removed');
+
+    if (!mounted) return;
+    // Navigate to welcome screen
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+      (route) => false,
     );
   }
 }

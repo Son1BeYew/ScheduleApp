@@ -8,6 +8,7 @@ class SocketService {
 
   IO.Socket? _socket;
   bool _isConnected = false;
+  List<Function()> _connectCallbacks = [];
 
   bool get isConnected => _isConnected;
 
@@ -28,6 +29,12 @@ class SocketService {
     _socket!.onConnect((_) {
       print('✅ Connected to socket server');
       _isConnected = true;
+      
+      // Call any waiting callbacks
+      for (var callback in _connectCallbacks) {
+        callback();
+      }
+      _connectCallbacks.clear();
     });
 
     _socket!.onDisconnect((_) {
@@ -47,25 +54,49 @@ class SocketService {
     _socket!.connect();
   }
 
+  Future<void> waitForConnection() async {
+    if (_isConnected) {
+      return;
+    }
+    
+    await Future.delayed(Duration(milliseconds: 100));
+    int attempts = 0;
+    while (!_isConnected && attempts < 50) {
+      await Future.delayed(Duration(milliseconds: 100));
+      attempts++;
+    }
+  }
+
   void disconnect() {
     if (_socket != null) {
+      print('🔴 Disconnecting socket...');
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
       _isConnected = false;
+      _connectCallbacks.clear();
+      print('✅ Socket disconnected');
     }
+  }
+
+  void reconnect(String token) {
+    print('🔄 Reconnecting socket...');
+    disconnect();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      connect(token);
+    });
   }
 
   void joinGroup(String groupId) {
     if (_socket != null && _socket!.connected) {
-      _socket!.emit('join-group', groupId);
+      _socket!.emit('group:join', {'groupId': groupId});
       print('📥 Joined group: $groupId');
     }
   }
 
   void leaveGroup(String groupId) {
     if (_socket != null && _socket!.connected) {
-      _socket!.emit('leave-group', groupId);
+      _socket!.emit('group:leave', {'groupId': groupId});
       print('📤 Left group: $groupId');
     }
   }
@@ -110,37 +141,54 @@ class SocketService {
     _socket?.off('user-left');
   }
 
-  void sendMessage(String groupId, String message) {
+  void sendMessage(String groupId, String content) {
+    print('📤 sendMessage called: groupId=$groupId, content=$content');
+    print('   Socket connected: ${_socket?.connected}');
+    print('   Socket exists: ${_socket != null}');
+    
     if (_socket != null && _socket!.connected) {
-      _socket!.emit('send-message', {
+      final payload = {
         'groupId': groupId,
-        'message': message,
-      });
-      print('📨 Message sent to group $groupId');
+        'content': content,
+        'attachments': [],
+      };
+      print('📤 Emitting group:message with payload: $payload');
+      _socket!.emit('group:message', payload);
+      print('✅ Message sent to group $groupId');
+    } else {
+      print('❌ Socket not connected - cannot send message');
     }
   }
 
-  void onMessageReceived(Function(dynamic) callback) {
-    _socket?.on('message-received', callback);
+  void onGroupMessage(Function(dynamic) callback) {
+    _socket?.on('group:message', callback);
   }
 
-  void offMessageReceived() {
-    _socket?.off('message-received');
+  void offGroupMessage() {
+    _socket?.off('group:message');
   }
 
-  void onMessageSent(Function(dynamic) callback) {
-    _socket?.on('message-sent', callback);
+  void onGroupError(Function(dynamic) callback) {
+    _socket?.on('group:error', callback);
   }
 
-  void offMessageSent() {
-    _socket?.off('message-sent');
+  void offGroupError() {
+    _socket?.off('group:error');
   }
 
-  void onMessageError(Function(dynamic) callback) {
-    _socket?.on('message-error', callback);
+  void onGroupJoined(Function(dynamic) callback) {
+    _socket?.on('group:joined', callback);
   }
 
-  void offMessageError() {
-    _socket?.off('message-error');
+  void offGroupJoined() {
+    _socket?.off('group:joined');
+  }
+
+  void onGroupLeft(Function(dynamic) callback) {
+    _socket?.on('group:left', callback);
+  }
+
+  void offGroupLeft() {
+    _socket?.off('group:left');
   }
 }

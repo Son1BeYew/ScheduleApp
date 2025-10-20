@@ -41,9 +41,25 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _setupSocketListeners();
-    _fetchGroupDetails();
-    _fetchMessages();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    print('🟦 _initializeData started');
+    
+    print('1️⃣ Fetching group details...');
+    await _fetchGroupDetails();
+    print('1️⃣ fetchGroupDetails complete');
+    
+    print('2️⃣ Calling setupSocketListeners...');
+    await _setupSocketListeners();
+    print('2️⃣ setupSocketListeners complete');
+    
+    print('3️⃣ Fetching messages...');
+    await _fetchMessages();
+    print('3️⃣ fetchMessages complete');
+    
+    print('🟩 _initializeData complete');
   }
 
   @override
@@ -51,8 +67,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     _socketService.offNoteCreated();
     _socketService.offNoteUpdated();
     _socketService.offNoteDeleted();
+    _socketService.offGroupMessage();
+    _socketService.offGroupError();
     _socketService.leaveGroup(widget.groupId);
-    _socketService.disconnect();
     _tabController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
@@ -64,8 +81,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
     final token = prefs.getString('token');
     
     if (token != null) {
+      print('🔵 Setting up socket listeners...');
       _socketService.connect(token);
+      
+      // Wait for socket to connect before joining group
+      print('⏳ Waiting for socket connection...');
+      await _socketService.waitForConnection();
+      print('✅ Socket connected, joining group...');
+      
       _socketService.joinGroup(widget.groupId);
+      
+      // Wait a bit for server to process joinGroup
+      print('⏳ Waiting for joinGroup to be processed...');
+      await Future.delayed(const Duration(milliseconds: 300));
       
       _socketService.onNoteCreated((data) {
         print('🔔 Note created: ${data['note']['title']}');
@@ -110,17 +138,16 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
         }
       });
 
-      _socketService.onMessageReceived((data) {
+      _socketService.onGroupMessage((data) {
         print('💬 Realtime Message: $data');
         if (mounted) {
-          final messageId = data['_id'] ?? data['id'] ?? '';
-          final messageContent = data['content'] ?? data['message'] ?? '';
-          final senderName = data['sender']?['fullname'] ??
-              data['senderName'] ??
-              'Ẩn danh';
+          final messageId = data['_id'] ?? '';
+          final messageContent = data['content'] ?? '';
+          final senderName = data['sender']?['fullname'] ?? 'Ẩn danh';
 
           setState(() {
             bool foundMatch = false;
+            // Check if this is a confirmation of a message we just sent
             for (int i = _messages.length - 1; i >= 0; i--) {
               final msg = _messages[i];
               if (msg['_id'] == null &&
@@ -140,8 +167,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
               }
             }
 
+            // If not found in pending messages, add as new message
             if (!foundMatch) {
-              if (messageId.isEmpty || !_messageIds.contains(messageId)) {
+              if (messageId.isNotEmpty && !_messageIds.contains(messageId)) {
                 final newMessage = {
                   '_id': messageId,
                   'sender': senderName,
@@ -149,15 +177,27 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
                   'timestamp': data['createdAt'] ?? DateTime.now().toString(),
                 };
                 _messages.add(newMessage);
-                if (messageId.isNotEmpty) {
-                  _messageIds.add(messageId);
-                }
+                _messageIds.add(messageId);
               }
             }
           });
           _scrollToBottom();
         }
       });
+
+      _socketService.onGroupError((data) {
+        print('❌ Group error: $data');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${data['message'] ?? 'Unknown error'}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      });
+      
+      print('✅ Socket listeners setup complete');
     }
   }
 
@@ -211,12 +251,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   }
 
   Future<void> _fetchMessages() async {
+    print('📨 _fetchMessages called, groupId: ${widget.groupId}');
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     if (token == null) {
       print('❌ Token not found');
       return;
     }
+
+    print('✅ Token found: ${token.substring(0, 20)}...');
 
     try {
       final url = Uri.parse(
@@ -229,22 +272,36 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
       );
 
       print('📥 Response status: ${response.statusCode}');
-      print('📥 Response body: ${response.body}');
+      print('📥 Response body length: ${response.body.length}');
+      if (response.body.length < 500) {
+        print('📥 Response body: ${response.body}');
+      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('📦 Decoded data: $data');
+        print('📦 Decoded data type: ${data.runtimeType}');
+        print('📦 Data keys: ${data is Map ? data.keys.toList() : "not a map"}');
 
         List messageList = [];
         
         if (data is Map) {
-          if (data.containsKey('data') && data['data'] is List) {
-            messageList = data['data'];
-          } else if (data.containsKey('messages') && data['messages'] is List) {
+          print('  ℹ️ Data is a Map');
+          if (data.containsKey('data')) {
+            print('  ✅ Found "data" key, type: ${data['data'].runtimeType}');
+            if (data['data'] is List) {
+              messageList = data['data'];
+            }
+          } else if (data.containsKey('messages')) {
+            print('  ✅ Found "messages" key');
             messageList = data['messages'];
+          } else {
+            print('  ⚠️ No "data" or "messages" key found!');
           }
         } else if (data is List) {
+          print('  ℹ️ Data is a List');
           messageList = data;
+        } else {
+          print('  ❌ Unknown data type!');
         }
 
         print('📋 Message list length: ${messageList.length}');
@@ -260,8 +317,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
             )
             .toList();
 
+        print('🔵 Setting messages via setState...');
         setState(() {
-          _messages = msgs.reversed.toList();
+          _messages = msgs;
+          print('   _messages count after assignment: ${_messages.length}');
+          
           _messageIds.clear();
           for (var msg in _messages) {
             final id = msg['_id'] ?? '';
@@ -269,15 +329,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
               _messageIds.add(id);
             }
           }
+          print('   _messageIds count: ${_messageIds.length}');
         });
-        print('✅ Loaded ${_messages.length} messages');
+        print('✅ Loaded ${_messages.length} messages (oldest first)');
+        print('✅ Widget will rebuild now');
         _scrollToBottom();
+        print('✅ Scroll completed');
       } else {
         print('⚠️ Fetch messages failed: ${response.statusCode}');
         print('📥 Response: ${response.body}');
       }
-    } catch (e) {
-      print('❌ Lỗi tải tin nhắn: $e');
+    } catch (e, stackTrace) {
+      print('❌ Exception in _fetchMessages: $e');
+      print('📍 Stack trace: $stackTrace');
     }
   }
 
@@ -294,11 +358,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+    print('🔵 _sendMessage called');
+    
+    if (_messageController.text.trim().isEmpty) {
+      print('⚠️ Message is empty');
+      return;
+    }
 
     final msg = _messageController.text.trim();
+    print('📝 Message text: $msg');
+    print('🔌 Socket connected: ${_socketService.isConnected}');
     
     if (!_socketService.isConnected) {
+      print('❌ Socket not connected, showing error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Lỗi: Không kết nối đến server'),
@@ -308,6 +380,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
       return;
     }
 
+    print('✅ Socket connected, adding message to UI');
     setState(() {
       _messages.add({
         '_id': null,
@@ -317,9 +390,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> with SingleTicker
       });
     });
 
+    print('📤 Calling socketService.sendMessage');
     _socketService.sendMessage(widget.groupId, msg);
     _messageController.clear();
     _scrollToBottom();
+    print('✅ Message processing complete');
   }
 
   void _navigateToAddNote() async {
